@@ -32,11 +32,22 @@ class GuardianApp {
         return app.config;
       },
       notifyFeedScan: ({ removedCount, scope }) => {
+        const previousRoute = app.runtime.route;
+        const previousScope = app.runtime.pageScope;
+
         app.runtime.route = removedCount >= 0 ? "feed" : app.runtime.route;
         app.runtime.pageScope = scope;
-        app.runtime.feedRemovedTotal += removedCount;
-        app.runtime.feedLastRemoved = removedCount;
-        app.render();
+
+        if (removedCount > 0) {
+          app.runtime.feedRemovedTotal += removedCount;
+          app.runtime.feedLastRemoved = removedCount;
+          app.render();
+          return;
+        }
+
+        if (previousRoute !== app.runtime.route || previousScope !== app.runtime.pageScope) {
+          app.render();
+        }
       },
       log: (message) => this.log(message),
       sendFeedScanMetric: (blockedCount) => sendMessage("RUN_FEED_SCAN", { blockedCount }).then(() => undefined)
