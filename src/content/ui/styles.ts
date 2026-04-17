@@ -301,7 +301,6 @@ export function createStyles(): string {
       overflow: auto;
       display: grid;
       gap: 16px;
-      animation: guardianFadeIn 180ms ease;
     }
 
     .guardian-modal-footer {
@@ -872,7 +871,6 @@ export function createStyles(): string {
       padding: 0 16px 16px;
       display: grid;
       gap: 14px;
-      animation: guardianFadeIn 180ms ease;
     }
 
     @keyframes guardianFadeIn {
