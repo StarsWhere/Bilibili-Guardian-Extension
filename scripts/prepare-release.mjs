@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 const projectRoot = process.cwd();
 const packageJsonPath = path.join(projectRoot, "package.json");
 const manifestPath = path.join(projectRoot, "public", "manifest.json");
+const userscriptArtifactName = "bilibili-guardian.user.js";
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -101,6 +102,7 @@ function main() {
   writeGithubOutput("version", version);
   writeGithubOutput("tag", tag);
   writeGithubOutput("artifact_name", artifactName);
+  writeGithubOutput("userscript_artifact_name", userscriptArtifactName);
   writeGithubOutput("latest_tag", latestTag || "");
 
   process.stdout.write(
@@ -109,6 +111,7 @@ function main() {
         version,
         tag,
         artifact_name: artifactName,
+        userscript_artifact_name: userscriptArtifactName,
         latest_tag: latestTag || null
       },
       null,

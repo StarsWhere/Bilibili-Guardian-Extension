@@ -29,5 +29,5 @@ jobs:
       - name: Run typecheck
         run: npm run typecheck
 
-      - name: Build extension
-        run: npm run build
+      - name: Build extension and userscript
+        run: npm run build:all

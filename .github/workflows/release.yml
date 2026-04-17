@@ -43,8 +43,8 @@ jobs:
       - name: Run typecheck
         run: npm run typecheck
 
-      - name: Build extension
-        run: npm run build
+      - name: Build extension and userscript
+        run: npm run build:all
 
       - name: Commit version files
         env:
@@ -90,19 +90,30 @@ jobs:
       - name: Create release notes body
         env:
           ARTIFACT_NAME: ${{ steps.prepare.outputs.artifact_name }}
+          USERSCRIPT_ARTIFACT_NAME: ${{ steps.prepare.outputs.userscript_artifact_name }}
         run: |
           cat <<EOF > release-prefix.md
           ## Install
 
-          - Download \`${ARTIFACT_NAME}\`
-          - Unzip the archive locally
-          - Open \`chrome://extensions\` or \`edge://extensions\`
-          - Enable Developer mode and load the extracted \`dist/\` files
+          ### 浏览器扩展版
+
+          - 下载 \`${ARTIFACT_NAME}\`
+          - 在本地解压缩
+          - 打开 \`chrome://extensions\` 或 \`edge://extensions\`
+          - 开启开发者模式并加载解压后的扩展目录
+
+          ### Tampermonkey 油猴脚本版
+
+          - 下载 \`${USERSCRIPT_ARTIFACT_NAME}\`
+          - 在浏览器中安装 Tampermonkey
+          - 打开该 \`.user.js\` 文件并确认导入
+          - 如果使用自定义 OpenAI-Compatible 接口，首次请求时按提示允许脚本访问目标域名
 
           ## Artifacts
 
           - \`${ARTIFACT_NAME}\`
           - \`${ARTIFACT_NAME}.sha256\`
+          - \`${USERSCRIPT_ARTIFACT_NAME}\`
           EOF
 
       - name: Create GitHub Release
@@ -115,3 +126,4 @@ jobs:
           files: |
             ${{ steps.prepare.outputs.artifact_name }}
             ${{ steps.prepare.outputs.artifact_name }}.sha256
+            dist/${{ steps.prepare.outputs.userscript_artifact_name }}
