@@ -219,8 +219,8 @@ npx tsc --noEmit
 
 项目已规划为使用 GitHub Actions 自动完成质量校验与发布：
 
-- `CI` workflow：对 `push` / `pull_request` 自动执行 `npm ci`、测试、类型检查和构建
-- `Release` workflow：对 `main` 分支推送自动执行发布
+- `CI` workflow：对 `pull_request` 与非 `main` 分支的 `push` 自动执行 `npm ci`、测试、类型检查和构建
+- `Release` workflow：对 `main` 分支推送自动执行发布，并在发布前再次执行测试、类型检查和构建
 - 发布时自动递增 `patch` 版本号
 - 自动同步 `package.json` 与 `public/manifest.json`
 - 自动创建 `vX.Y.Z` tag

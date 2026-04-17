@@ -4,7 +4,9 @@
 
 ## 自动发布总览
 
+- 普通开发分支与 Pull Request 由 `CI` workflow 负责质量校验
 - 当有新提交进入 `main` 分支时，GitHub Actions 会自动触发发布流程
+- `main` 分支不再额外重复跑一遍独立 `CI`，避免和发布流程双重执行
 - 发布流程会先执行测试、类型检查和构建，全部通过后才继续
 - workflow 会自动递增 `patch` 版本号
 - workflow 会自动同步 `package.json` 与 `public/manifest.json`
