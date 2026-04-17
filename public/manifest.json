@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Bilibili Guardian Extension",
   "description": "统一整合 B 站推荐流过滤与视频页 AI 广告检测/自动跳过的浏览器扩展。",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "permissions": [
     "storage"
   ],
