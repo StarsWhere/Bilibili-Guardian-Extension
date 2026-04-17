@@ -49,6 +49,35 @@ export const DEFAULT_AGENT_PROMPT = `你是一个智能 agent，专门分析 Bil
 - 优先识别“空降”“指路”“感谢金主”“广告后”等路标型弹幕。
 - 忽略“正片”“省流”“总结”等常规内容提示。`;
 
+export function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+export function normalizeBaseUrl(value: string): string {
+  return stripTrailingSlash(value.trim());
+}
+
+export function getCustomBaseUrlValidationError(baseUrl: string): string | null {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (!normalized) {
+    return "请填写自定义 OpenAI 兼容接口地址，例如：https://example.com/v1";
+  }
+
+  let parsed: URL;
+
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    return "自定义接口地址格式无效，请填写完整 URL，例如：https://example.com/v1";
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return "自定义接口地址必须以 http:// 或 https:// 开头";
+  }
+
+  return null;
+}
+
 export const DEFAULT_CONFIG: ExtensionConfig = {
   ui: {
     theme: "light",

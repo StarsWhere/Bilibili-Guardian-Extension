@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, mergeConfig } from "@/shared/config";
+import { DEFAULT_CONFIG, getCustomBaseUrlValidationError, mergeConfig } from "@/shared/config";
 
 describe("mergeConfig", () => {
   it("merges nested sections without dropping defaults", () => {
@@ -23,5 +23,12 @@ describe("mergeConfig", () => {
     expect(DEFAULT_CONFIG.ui.onboardingDismissed).toBe(false);
     expect(merged.ui.onboardingDismissed).toBe(true);
     expect(mergeConfig(undefined).ui.onboardingDismissed).toBe(false);
+  });
+
+  it("validates custom OpenAI-compatible base URLs", () => {
+    expect(getCustomBaseUrlValidationError("")).toContain("请填写自定义 OpenAI 兼容接口地址");
+    expect(getCustomBaseUrlValidationError("localhost:8000/v1")).toMatch(/格式无效|http:\/\/ 或 https:\/\//);
+    expect(getCustomBaseUrlValidationError("ftp://localhost:8000/v1")).toContain("http:// 或 https://");
+    expect(getCustomBaseUrlValidationError("https://example.com/v1/")).toBeNull();
   });
 });
