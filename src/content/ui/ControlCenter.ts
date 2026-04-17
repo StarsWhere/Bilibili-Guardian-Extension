@@ -54,6 +54,81 @@ function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
+export function toDisplayRoute(route: GuardianRuntimeState["route"]): string {
+  switch (route) {
+    case "feed":
+      return "首页内容过滤中";
+    case "video":
+      return "视频识别已接管";
+    default:
+      return "等待进入支持页面";
+  }
+}
+
+export function toScopeLabel(scope: FeedPageScope | null): string {
+  switch (scope) {
+    case "home":
+      return "首页";
+    case "search":
+      return "搜索结果页";
+    case "popular":
+      return "热门页";
+    case "ranking":
+      return "排行榜";
+    case "channel":
+      return "分区或频道页";
+    default:
+      return "当前页面暂不在首页整理范围内";
+  }
+}
+
+export function toVideoPhaseLabel(phase: VideoAnalysisPhase): string {
+  switch (phase) {
+    case "collecting":
+      return "正在整理参考信息";
+    case "cached":
+      return "已直接使用上次识别结果";
+    case "analyzing":
+      return "正在识别当前视频";
+    case "ready":
+      return "识别完成";
+    case "error":
+      return "这次识别失败了";
+    case "skipped":
+      return "已帮你自动跳过";
+    default:
+      return "还没开始识别";
+  }
+}
+
+export function toProviderLabel(provider: ExtensionConfig["ai"]["provider"]): string {
+  switch (provider) {
+    case "openai":
+      return "OpenAI";
+    case "deepseek":
+      return "DeepSeek";
+    case "gemini":
+      return "Gemini";
+    case "anthropic":
+      return "Anthropic";
+    case "custom":
+      return "自定义兼容接口";
+    default:
+      return provider;
+  }
+}
+
+export function hasConfiguredRecognitionService(config: ExtensionConfig): boolean {
+  const hasBaseUrl = config.ai.baseUrl.trim().length > 0;
+  const hasModel = config.ai.model.trim().length > 0;
+  const hasKey = config.ai.apiKey.trim().length > 0;
+
+  if (config.ai.provider === "custom") {
+    return hasBaseUrl && hasModel;
+  }
+
+  return hasBaseUrl && hasModel && hasKey;
+}
 
 export class ControlCenter {
   private readonly root: HTMLDivElement;
