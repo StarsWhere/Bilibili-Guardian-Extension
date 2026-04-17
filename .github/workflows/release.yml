@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip release]')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare release version
+        id: prepare
+        run: npm run release:prepare
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Commit version files
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json public/manifest.json
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(release): v${VERSION} [skip release]"
+          git push origin HEAD:main
+
+      - name: Ensure tag does not already exist
+        env:
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          git fetch --tags --force
+          if git rev-parse "${TAG}" >/dev/null 2>&1; then
+            echo "Tag already exists: ${TAG}" >&2
+            exit 1
+          fi
+
+      - name: Create annotated tag
+        env:
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+
+      - name: Package release artifact
+        env:
+          ARTIFACT_NAME: ${{ steps.prepare.outputs.artifact_name }}
+        run: |
+          cd dist
+          zip -r "../${ARTIFACT_NAME}" .
+
+      - name: Generate checksum
+        env:
+          ARTIFACT_NAME: ${{ steps.prepare.outputs.artifact_name }}
+        run: |
+          sha256sum "${ARTIFACT_NAME}" > "${ARTIFACT_NAME}.sha256"
+
+      - name: Create release notes body
+        env:
+          ARTIFACT_NAME: ${{ steps.prepare.outputs.artifact_name }}
+        run: |
+          cat <<EOF > release-prefix.md
+          ## Install
+
+          - Download \`${ARTIFACT_NAME}\`
+          - Unzip the archive locally
+          - Open \`chrome://extensions\` or \`edge://extensions\`
+          - Enable Developer mode and load the extracted \`dist/\` files
+
+          ## Artifacts
+
+          - \`${ARTIFACT_NAME}\`
+          - \`${ARTIFACT_NAME}.sha256\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.prepare.outputs.tag }}
+          name: ${{ steps.prepare.outputs.tag }}
+          generate_release_notes: true
+          body_path: release-prefix.md
+          files: |
+            ${{ steps.prepare.outputs.artifact_name }}
+            ${{ steps.prepare.outputs.artifact_name }}.sha256
