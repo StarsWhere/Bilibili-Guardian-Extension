@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Bilibili Guardian Extension",
+  "description": "统一整合 B 站推荐流过滤与视频页 AI 广告检测/自动跳过的浏览器扩展。",
+  "version": "0.1.0",
+  "permissions": [
+    "storage",
+    "permissions"
+  ],
+  "host_permissions": [
+    "https://www.bilibili.com/*",
+    "https://api.bilibili.com/*",
+    "https://comment.bilibili.com/*",
+    "https://api.openai.com/*",
+    "https://api.deepseek.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.anthropic.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.bilibili.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
