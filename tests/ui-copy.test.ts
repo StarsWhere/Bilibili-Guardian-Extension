@@ -44,6 +44,32 @@ describe("user-facing UI copy helpers", () => {
           apiKey: ""
         }
       })
+    ).toBe(false);
+
+    expect(
+      hasConfiguredRecognitionService({
+        ...DEFAULT_CONFIG,
+        ai: {
+          ...DEFAULT_CONFIG.ai,
+          provider: "custom",
+          baseUrl: "not-a-url",
+          model: "custom-model",
+          apiKey: "token"
+        }
+      })
+    ).toBe(false);
+
+    expect(
+      hasConfiguredRecognitionService({
+        ...DEFAULT_CONFIG,
+        ai: {
+          ...DEFAULT_CONFIG.ai,
+          provider: "custom",
+          baseUrl: "http://localhost:8000/v1",
+          model: "custom-model",
+          apiKey: "token"
+        }
+      })
     ).toBe(true);
   });
 });

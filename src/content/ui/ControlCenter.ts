@@ -1,4 +1,4 @@
-import { AI_PROVIDER_DEFAULTS } from "@/shared/config";
+import { AI_PROVIDER_DEFAULTS, getCustomBaseUrlValidationError } from "@/shared/config";
 import type {
   DeepPartial,
   ExtensionConfig,
@@ -136,7 +136,7 @@ export function hasConfiguredRecognitionService(config: ExtensionConfig): boolea
   const hasKey = config.ai.apiKey.trim().length > 0;
 
   if (config.ai.provider === "custom") {
-    return hasBaseUrl && hasModel;
+    return hasModel && hasKey && !getCustomBaseUrlValidationError(config.ai.baseUrl);
   }
 
   return hasBaseUrl && hasModel && hasKey;
