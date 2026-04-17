@@ -1,5 +1,6 @@
 import { fetchCidByBvid, fetchDanmakuXml, parseDanmakuXml } from "./bilibili";
 import { ensureCustomOriginPermission, getProviderBaseUrl } from "./providers";
+import { getCustomBaseUrlValidationError } from "@/shared/config";
 import { clamp, normalizeAdRange, secondsToTimeString, timeStringToSeconds } from "@/shared/time";
 import type { BackgroundAnalyzeVideoPayload, ExtensionConfig, VideoAnalysisResult } from "@/shared/types";
 
@@ -139,12 +140,23 @@ async function callAiProvider(
   signal: AbortSignal
 ): Promise<{ result: VideoAnalysisResult; rawResponse: string }> {
   const provider = config.ai.provider;
-  if (!config.ai.apiKey.trim()) {
-    throw new Error("请先配置 AI API Key");
+  if (!config.ai.model.trim()) {
+    throw new Error("请先填写 AI 模型名称");
   }
 
   if (provider === "custom") {
+    const validationError = getCustomBaseUrlValidationError(config.ai.baseUrl);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    if (!config.ai.apiKey.trim()) {
+      throw new Error("请先为自定义兼容接口填写访问密钥");
+    }
+
     await ensureCustomOriginPermission(config.ai.baseUrl);
+  } else if (!config.ai.apiKey.trim()) {
+    throw new Error("请先配置 AI API Key");
   }
 
   const baseUrl = getProviderBaseUrl(provider, config);

@@ -1,13 +1,18 @@
-import { AI_PROVIDER_DEFAULTS } from "@/shared/config";
+import {
+  AI_PROVIDER_DEFAULTS,
+  getCustomBaseUrlValidationError,
+  normalizeBaseUrl
+} from "@/shared/config";
 import type { AIProvider, ExtensionConfig } from "@/shared/types";
 
-function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
-}
-
 function buildOriginPattern(baseUrl: string): string | null {
+  const validationError = getCustomBaseUrlValidationError(baseUrl);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
   try {
-    const origin = new URL(baseUrl).origin;
+    const origin = new URL(normalizeBaseUrl(baseUrl)).origin;
     return `${origin}/*`;
   } catch {
     return null;
@@ -33,14 +38,23 @@ export async function ensureCustomOriginPermission(baseUrl: string): Promise<voi
 
 export function getProviderBaseUrl(provider: AIProvider, config: ExtensionConfig): string {
   if (provider === "custom") {
-    return stripTrailingSlash(config.ai.baseUrl.trim());
+    return normalizeBaseUrl(config.ai.baseUrl);
   }
 
-  return stripTrailingSlash(config.ai.baseUrl.trim() || AI_PROVIDER_DEFAULTS[provider].baseUrl);
+  return normalizeBaseUrl(config.ai.baseUrl || AI_PROVIDER_DEFAULTS[provider].baseUrl);
 }
 
 export async function fetchModels(provider: AIProvider, config: ExtensionConfig): Promise<string[]> {
   if (provider === "custom") {
+    const validationError = getCustomBaseUrlValidationError(config.ai.baseUrl);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    if (!config.ai.apiKey.trim()) {
+      throw new Error("获取模型前，请先填写自定义兼容接口的访问密钥");
+    }
+
     await ensureCustomOriginPermission(config.ai.baseUrl);
   }
 

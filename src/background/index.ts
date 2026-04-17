@@ -2,6 +2,7 @@ import { analyzeVideo, cancelAnalysisRequest } from "./analyze";
 import { getCachedVideoResult, setCachedVideoResult } from "./cache";
 import { fetchModels, ensureCustomOriginPermission } from "./providers";
 import { loadConfig, saveConfig } from "./storage";
+import { mergeConfig } from "@/shared/config";
 import type {
   BackgroundEnvelope,
   BackgroundMessageType,
@@ -16,8 +17,11 @@ type Handler<K extends BackgroundMessageType> = (
 ) => Promise<BackgroundResponse<K>> | BackgroundResponse<K>;
 
 async function maybeEnsureCustomPermission(configPatch: DeepPartial<ExtensionConfig>): Promise<void> {
-  const provider = configPatch.ai?.provider;
-  const baseUrl = configPatch.ai?.baseUrl?.trim();
+  const current = await loadConfig();
+  const merged = mergeConfig(configPatch, current);
+  const provider = merged.ai.provider;
+  const baseUrl = merged.ai.baseUrl.trim();
+
   if (provider === "custom" && baseUrl) {
     await ensureCustomOriginPermission(baseUrl);
   }
