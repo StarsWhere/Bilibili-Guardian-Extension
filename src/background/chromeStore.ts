@@ -1,0 +1,11 @@
+import type { KeyValueStore } from "@/core/storage";
+
+export const chromeLocalStore: KeyValueStore = {
+  async get<T>(key: string): Promise<T | undefined> {
+    const result = await chrome.storage.local.get(key);
+    return result[key] as T | undefined;
+  },
+  async set<T>(key: string, value: T): Promise<void> {
+    await chrome.storage.local.set({ [key]: value });
+  }
+};
