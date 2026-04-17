@@ -55,7 +55,8 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
     floatingButtonPosition: { x: 24, y: 96 },
     panelOpen: false,
     activeTab: "overview",
-    diagnosticsEnabled: true
+    diagnosticsEnabled: true,
+    onboardingDismissed: false
   },
   feed: {
     enabled: true,

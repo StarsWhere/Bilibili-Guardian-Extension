@@ -1,5 +1,5 @@
 export type ThemeMode = "light" | "dark";
-export type PanelTabId = "overview" | "feed" | "video" | "ai" | "diagnostics";
+export type PanelTabId = "overview" | "feed" | "video" | "advanced" | "ai" | "diagnostics";
 export type AIProvider = "openai" | "deepseek" | "gemini" | "anthropic" | "custom";
 export type FeedPageScope = "home" | "search" | "popular" | "ranking" | "channel";
 export type VideoAnalysisPhase =
@@ -31,6 +31,7 @@ export interface ExtensionConfig {
     panelOpen: boolean;
     activeTab: PanelTabId;
     diagnosticsEnabled: boolean;
+    onboardingDismissed: boolean;
   };
   feed: {
     enabled: boolean;
