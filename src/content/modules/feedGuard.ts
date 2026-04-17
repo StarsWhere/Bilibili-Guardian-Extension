@@ -57,6 +57,27 @@ const LIVE_SELECTORS = [
   ".live-mark"
 ];
 
+function isGuardianMutationTarget(node: Node | null): boolean {
+  if (!(node instanceof Element)) {
+    return false;
+  }
+
+  return node.id === "guardian-root" || Boolean(node.closest("#guardian-root"));
+}
+
+export function shouldIgnoreMutations(mutations: Pick<MutationRecord, "target" | "addedNodes" | "removedNodes">[]): boolean {
+  return mutations.every((mutation) => {
+    if (isGuardianMutationTarget(mutation.target)) {
+      return true;
+    }
+
+    const addedInsideGuardian = Array.from(mutation.addedNodes).every((node) => isGuardianMutationTarget(node));
+    const removedInsideGuardian = Array.from(mutation.removedNodes).every((node) => isGuardianMutationTarget(node));
+
+    return addedInsideGuardian && removedInsideGuardian;
+  });
+}
+
 function firstText(root: Element, selectors: string[]): string {
   for (const selector of selectors) {
     const found = root.querySelector(selector);
@@ -153,7 +174,11 @@ export class FeedGuard {
     this.runScan();
 
     if (this.app.config.feed.continuousScan) {
-      this.observer = new MutationObserver(() => {
+      this.observer = new MutationObserver((mutations) => {
+        if (shouldIgnoreMutations(mutations)) {
+          return;
+        }
+
         if (this.throttleId !== null) {
           return;
         }
