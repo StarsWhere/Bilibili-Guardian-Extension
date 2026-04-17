@@ -1,54 +1,140 @@
-# Bilibili Guardian Extension
+# Bilibili Guardian
 
-一个为 Bilibili 设计的统一浏览器扩展，整合了推荐流过滤、视频页 AI 广告检测与自动跳过、以及页面内统一悬浮控制中心。
+一个面向 Bilibili 的统一清理工具，提供两种可安装形态：
 
-这是一个全新的重构项目，用来整合并升级旧能力，而不是把旧脚本简单拼接在一起。
+- 浏览器扩展版：适合长期使用，支持 Chrome / Edge Manifest V3
+- Tampermonkey 油猴脚本版：适合快速安装，使用单文件 `.user.js`
+
+它把两个核心能力整合到同一套页面内控制中心里：
+
+- 推荐流过滤：整理首页、搜索、热门、排行榜和频道类页面中的广告、直播和不想看的内容
+- 视频 AI 识别与自动跳过：分析弹幕与评论，判断视频中是否存在广告片段，并在满足条件时自动跳过
 
 - 作者：**StarsWhere**
 - License：**MIT**
-- 目标平台：**Chrome / Edge Manifest V3**
-- 当前版本：**0.1.0**
+- 当前版本：**0.1.3**
 
-## 亮点
+## 功能与适用场景
 
-- 一个扩展同时覆盖“推荐流过滤”和“视频页 AI 跳过”
-- 使用 `TypeScript + Vite + Manifest V3` 重构为模块化工程
-- 页面内统一悬浮按钮与控制台，不再拆成两套体验
-- 支持 OpenAI、DeepSeek、Gemini、Anthropic 与自定义 OpenAI-Compatible 接口
-- 后台统一负责配置、缓存、模型拉取、超时控制和权限申请
-- 去掉默认 `<all_urls>`，仅保留必要权限并对自定义域名动态申请
+### 你可以用它做什么
 
-## 功能概览
+- 在首页、搜索、热门、排行榜等页面自动移除广告卡片和直播卡片
+- 按分类、标题关键词、UP 主关键词整理推荐流
+- 在视频页调用 OpenAI、DeepSeek、Gemini、Anthropic 或自定义 OpenAI-Compatible 接口做广告片段识别
+- 命中阈值后自动把播放器跳到广告片段之后
+- 使用统一悬浮按钮和控制中心管理过滤、视频识别、AI 服务与诊断信息
+
+### 更适合哪些用户
+
+- 想减少首页和搜索页噪音的 Bilibili 高频用户
+- 已经有 AI API Key，希望在视频页自动识别“恰饭”片段的用户
+- 更偏好扩展安装，或者更偏好油猴脚本安装的用户
+
+## 安装方式
+
+### 方式一：浏览器扩展版
+
+适用场景：
+
+- 你主要使用 Chrome 或 Edge
+- 你希望以浏览器扩展方式长期启用
+
+安装步骤：
+
+1. 克隆仓库并安装依赖：
+
+   ```bash
+   npm install
+   ```
+
+2. 构建扩展产物：
+
+   ```bash
+   npm run build
+   ```
+
+3. 打开扩展管理页：
+   - Chrome：`chrome://extensions`
+   - Edge：`edge://extensions`
+4. 打开右上角“开发者模式”
+5. 选择“加载已解压的扩展程序”
+6. 选择项目里的 `dist/` 目录
+
+### 方式二：Tampermonkey 油猴脚本版
+
+适用场景：
+
+- 你想快速安装单文件版本
+- 你已经在浏览器中使用 Tampermonkey
+
+安装步骤：
+
+1. 安装 Tampermonkey
+2. 安装依赖并构建 userscript：
+
+   ```bash
+   npm install
+   npm run build:userscript
+   ```
+
+3. 打开 `dist/bilibili-guardian.user.js`
+4. 在 Tampermonkey 安装页确认导入
+5. 首次使用自定义 OpenAI-Compatible 接口时，如果脚本管理器提示访问授权，请允许目标域名
+
+### 构建产物说明
+
+当前仓库的正式产物包括：
+
+- 扩展版：`dist/manifest.json`、`dist/content.js`、`dist/background.js`
+- 油猴版：`dist/bilibili-guardian.user.js`
+
+如果你需要一次性验证全部产物，可以执行：
+
+```bash
+npm run build:all
+```
+
+## 配置与使用说明
+
+### 第一次使用建议
+
+1. 打开任意 Bilibili 页面
+2. 点击页面内的悬浮按钮，打开控制中心
+3. 先在“AI”相关设置中填写：
+   - Provider
+   - Base URL
+   - API Key
+   - 模型名称
+4. 再根据需要调整推荐流过滤规则和自动跳过阈值
 
 ### 推荐流过滤
 
-当前优先覆盖 `www.bilibili.com` 下的 feed-like 页面：
+支持页面：
 
 - 首页
 - 搜索结果页
 - 热门页
 - 排行榜页
-- 分区 / 频道类页面
+- 频道 / 分区类页面
 
-支持能力：
+可配置项：
 
-- 广告卡片过滤
-- 直播卡片过滤
-- 分类黑名单过滤
-- 标题 / UP 主关键词黑名单过滤
-- 页面变化持续监听与自动重扫
+- 是否过滤广告
+- 是否过滤直播
+- 分类黑名单
+- 标题 / UP 主关键词黑名单
+- 是否持续监听页面变化并自动重扫
 
-### 视频页 AI 广告检测与自动跳过
+### 视频 AI 识别与自动跳过
 
-在 `https://www.bilibili.com/video/*` 页面中：
+工作流程：
 
-- 自动识别 `bvid`
-- 拉取视频信息与弹幕
-- 收集评论区首条 / 置顶评论
-- 对弹幕做白名单 / 黑名单过滤
-- 调用 AI 判断是否存在广告区间
-- 对结果进行概率与时长修正
-- 在命中阈值时自动跳过广告片段
+1. 自动识别当前视频的 `bvid`
+2. 获取视频 CID、弹幕和评论区首条 / 置顶评论
+3. 按白名单 / 黑名单整理有效弹幕
+4. 调用 AI 接口判断是否存在广告区间
+5. 根据概率、最短时长、最长时长做结果修正
+6. 当结果达到阈值时自动跳过
 
 支持的 AI Provider：
 
@@ -58,149 +144,67 @@
 - Anthropic
 - 自定义 OpenAI-Compatible 接口
 
-### 统一悬浮控制中心
+### 自定义 OpenAI-Compatible 接口
 
-页面内提供一个统一入口，覆盖首页过滤与视频页跳过能力：
+使用自定义接口时，请确认：
 
-- 拖拽移动
-- 点击与拖动区分
-- 边缘吸附
-- 窗口尺寸变化后的安全回位
-- 统一状态展示与诊断日志
+- `Base URL` 是完整地址，例如 `https://example.com/v1`
+- 已填写有效的 API Key
+- 已填写模型名称
+- 如果是 Tampermonkey 版，首次请求时允许脚本访问目标域名
+- 如果是扩展版，首次保存或请求时允许扩展申请对应域名权限
 
-当前控制台标签页：
+## 常见问题
 
-- `总览`
-- `过滤`
-- `视频`
-- `AI`
-- `诊断`
+### 1. 页面上没有看到悬浮按钮
 
-## 为什么是一个新项目
+请先确认：
 
-这个仓库的目标不是“把两个旧项目塞进一个 content script”，而是做一次真正可维护的扩展重构：
+- 当前页面域名是 `https://www.bilibili.com/*`
+- 扩展版已经成功加载，或 Tampermonkey 脚本已经启用
+- 页面没有被其他脚本或样式异常覆盖
 
-- 统一配置结构 `ExtensionConfig`
-- 统一前后台消息协议
-- 路由模块化挂载 `FeedGuard` / `VideoGuard`
-- 后台集中管理 Bilibili 请求、AI 请求和缓存
-- 用 `AbortController` 支持视频分析取消
-- 通过可选权限支持自定义 API 域名
+### 2. 视频识别时报“请先配置 AI API Key”或类似错误
 
-## 技术架构
+通常表示以下字段还不完整：
 
-### Content Script
+- API Key
+- 模型名称
+- Base URL
 
-页面侧负责：
+如果你使用的是自定义兼容接口，还需要确认 URL 格式正确，并且脚本 / 扩展已获得访问该域名的权限。
 
-- 路由识别
-- DOM 提取与页面交互
-- 控制台 UI
-- 推荐流扫描与过滤
-- 视频播放器自动跳过
-- 与后台 Service Worker 通信
+### 3. 油猴版导入后无法请求外部接口
 
-### Background Service Worker
+请优先检查：
 
-后台负责：
+- 是否使用 Tampermonkey
+- 脚本是否已启用
+- 首次访问外部接口时是否拒绝了授权提示
+- 自定义接口服务端是否允许你的调用方式
 
-- 配置持久化
-- 视频分析缓存
-- Bilibili 接口访问
-- AI 请求与超时控制
-- 模型列表获取
-- 自定义 API 域名权限申请
+### 4. 为什么有时不会触发自动跳过
 
-### Shared Modules
+常见原因：
 
-共享层统一：
+- 当前识别结果概率没有达到阈值
+- AI 没有返回可用的开始 / 结束时间
+- 过滤后的有效弹幕过少
+- 该视频已经命中过缓存结果，但缓存结果本身不满足跳过条件
 
-- 配置类型
-- 默认配置
-- 消息协议
-- 时间工具
-- URL 路由识别
-
-## 项目结构
-
-```text
-Bilibili-Guardian-Extension/
-├── public/
-│   └── manifest.json
-├── src/
-│   ├── background/
-│   ├── content/
-│   │   ├── modules/
-│   │   └── ui/
-│   └── shared/
-├── tests/
-├── package.json
-├── tsconfig.json
-└── vite.config.ts
-```
-
-更细的源码结构可以直接查看：
-
-- `src/background/`
-- `src/content/modules/`
-- `src/content/ui/`
-- `src/shared/`
-
-## 快速开始
+## 开发与构建
 
 ### 环境要求
 
 - Node.js 22+
 - npm 10+
-- Chrome / Edge 最新版本之一
 
-### 安装依赖
-
-```bash
-npm install
-```
-
-### 构建扩展
-
-```bash
-npm run build
-```
-
-构建完成后会生成：
-
-- `dist/manifest.json`
-- `dist/content.js`
-- `dist/background.js`
-
-### 本地加载扩展
-
-#### Chrome / Edge
-
-1. 打开扩展管理页：
-   - Chrome：`chrome://extensions`
-   - Edge：`edge://extensions`
-2. 打开右上角“开发者模式”
-3. 点击“加载已解压的扩展程序”
-4. 选择本项目的 `dist` 目录
-
-## 开发命令
+### 常用命令
 
 安装依赖：
 
 ```bash
 npm install
-```
-
-监听构建：
-
-```bash
-npm run dev
-```
-
-正式构建：
-
-```bash
-npm run build
 ```
 
 运行测试：
@@ -209,177 +213,58 @@ npm run build
 npm test
 ```
 
-类型检查：
+运行类型检查：
 
 ```bash
-npx tsc --noEmit
+npm run typecheck
 ```
 
-## CI/CD
+构建扩展版：
 
-项目已规划为使用 GitHub Actions 自动完成质量校验与发布：
+```bash
+npm run build
+```
 
-- `CI` workflow：对 `pull_request` 与非 `main` 分支的 `push` 自动执行 `npm ci`、测试、类型检查和构建
-- `Release` workflow：对 `main` 分支推送自动执行发布，并在发布前再次执行测试、类型检查和构建
-- 发布时自动递增 `patch` 版本号
-- 自动同步 `package.json` 与 `public/manifest.json`
-- 自动创建 `vX.Y.Z` tag
-- 自动打包 `dist/` 为 zip 并生成 `sha256`
-- 自动创建公开 GitHub Release
+构建油猴版：
 
-如果这次推送是 GitHub Actions 自己回写的版本提交，workflow 会通过 `[skip release]` 自动跳过，避免无限循环触发。
+```bash
+npm run build:userscript
+```
 
-## 当前测试覆盖
+构建全部产物：
 
-已包含的测试方向：
+```bash
+npm run build:all
+```
 
-- 配置合并
-- URL 路由识别
-- 时间工具函数
-- 推荐流过滤规则
-- 悬浮按钮拖拽辅助逻辑
+### 目录概览
 
-后续仍值得补充：
+```text
+src/
+├── app/          # 共享应用入口
+├── background/   # 扩展后台逻辑
+├── content/      # 页面侧 UI 与页面交互
+├── core/         # 跨平台的网络、存储、分析核心
+├── extension/    # 扩展平台适配层
+├── userscript/   # Tampermonkey 平台适配层
+└── shared/       # 类型、配置、时间与路由工具
+```
 
-- 更完整的 DOM 夹具测试
-- 视频页 SPA 切换场景
-- 更多页面卡片选择器兼容测试
+## CI / Release
 
-## 配置说明
+当前 GitHub Actions 流程分为两部分：
 
-### UI 配置
+- `CI`：对 Pull Request 和非 `main` 分支推送执行 `npm ci`、`npm test`、`npm run typecheck`、`npm run build:all`
+- `Release`：对 `main` 分支推送执行版本准备、测试、类型检查、`npm run build:all`、打 tag、生成发布产物并创建 GitHub Release
 
-- 浅色 / 深色主题
-- 悬浮按钮位置
-- 面板打开状态
-- 当前激活标签页
-- 诊断模式开关
+当前 GitHub Release 会附带以下产物：
 
-### 推荐流配置
+- `bilibili-guardian-extension-vX.Y.Z.zip`
+- `bilibili-guardian-extension-vX.Y.Z.zip.sha256`
+- `bilibili-guardian.user.js`
 
-- 是否启用推荐流过滤
-- 是否过滤广告卡片
-- 是否过滤直播卡片
-- 是否持续扫描页面变化
-- 页面范围选择
-- 分类黑名单
-- 关键词黑名单
+更详细的发版流程见 [RELEASING.md](RELEASING.md)。
 
-### 视频配置
+## 许可证
 
-- 是否启用视频分析
-- 默认自动跳过
-- 自动跳过概率阈值
-- 时长惩罚系数
-- 最小 / 最大广告时长
-- 最少弹幕分析数量
-- 缓存 TTL
-
-### AI 配置
-
-- Provider
-- Base URL
-- API Key
-- Model
-- Agent Prompt
-- 白名单 / 黑名单
-- 正则匹配开关
-
-## 权限策略
-
-固定权限：
-
-- `storage`
-- `permissions`
-
-固定 Host 权限：
-
-- `https://www.bilibili.com/*`
-- `https://api.bilibili.com/*`
-- `https://comment.bilibili.com/*`
-- `https://api.openai.com/*`
-- `https://api.deepseek.com/*`
-- `https://generativelanguage.googleapis.com/*`
-- `https://api.anthropic.com/*`
-
-可选权限：
-
-- `https://*/*`
-- `http://*/*`
-
-说明：
-
-- 内置 Provider 使用固定 Host 权限
-- 自定义 OpenAI-Compatible 地址在需要时通过 `chrome.permissions.request` 动态申请来源权限
-
-## 发布
-
-发布相关步骤见 [RELEASING.md](./RELEASING.md)。
-
-当前建议的发布方式：
-
-1. 合并代码到 `main`
-2. GitHub Actions 自动执行测试、类型检查与构建
-3. 自动递增 patch 版本并回写版本文件
-4. 自动创建 tag、打包产物、生成 checksum
-5. 自动发布公开 GitHub Release
-
-## 与旧项目的关系
-
-本项目继承并整合了以下两个旧项目的目标能力：
-
-- `Bilibili-Video-Ad-Skipper`
-- `Bilibili-Video-Filter`
-
-当前策略是：
-
-- 保留旧仓库作为参考实现
-- 不复用旧的单文件结构
-- 不兼容旧存储键
-- 首版不做自动配置迁移
-- 暂不提供油猴脚本版本
-
-## 已知限制
-
-### 推荐流页面结构仍需持续维护
-
-Bilibili 页面结构变化较快，不同 feed 页面卡片结构也不一致。当前版本已覆盖最常见场景，但未来仍需要继续补充和维护 selector。
-
-### 评论提取依赖页面 DOM
-
-当前评论内容通过页面 DOM 获取，因此在评论区异步加载较慢或页面结构变化时，可能影响评论采集质量。
-
-### AI 判断本质上仍是概率判断
-
-即使结合弹幕与评论，AI 分析依然可能存在：
-
-- 漏判
-- 误判
-- 起止时间偏移
-
-因此阈值、时长修正和提示词仍需要根据实际使用效果持续调整。
-
-### Firefox 暂未作为首要目标
-
-当前实现优先围绕 Chrome / Edge MV3 进行设计和验证，Firefox 不是当前阶段的首要支持目标。
-
-## 后续增强方向
-
-- 增加更多 B 站页面场景支持
-- 增强推荐流卡片标准化提取能力
-- 增加更细粒度的视频分析状态反馈
-- 增加配置导入 / 导出
-- 增加独立 Options Page 或浏览器工具栏 Popup
-- 增加更完整的 DOM 测试与兼容性回归测试
-- 优化自定义 API 权限申请与错误提示体验
-
-## 免责声明
-
-- 本项目仅供学习、研究与个人本地体验优化使用。
-- 扩展不会内置任何第三方 AI Key，使用 AI 服务产生的费用由用户自行承担。
-- Bilibili 页面结构可能随时变化，导致部分功能失效。
-- 作者不对使用本项目造成的任何直接或间接后果负责。
-
-## License
-
-本项目采用 [MIT License](./LICENSE)。
+本项目使用 [MIT License](LICENSE)。

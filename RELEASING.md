@@ -1,25 +1,85 @@
-# Releasing Bilibili Guardian Extension
+# Releasing Bilibili Guardian
 
-这个文档描述 `Bilibili-Guardian-Extension` 的自动发布流程，以及在 GitHub Actions 不可用时的手动兜底方案。
+这个文档描述当前仓库的正式发布方式，以及在 GitHub Actions 暂时不可用时的手动兜底流程。
 
 ## 自动发布总览
 
-- 普通开发分支与 Pull Request 由 `CI` workflow 负责质量校验
-- 当有新提交进入 `main` 分支时，GitHub Actions 会自动触发发布流程
-- `main` 分支不再额外重复跑一遍独立 `CI`，避免和发布流程双重执行
-- 发布流程会先执行测试、类型检查和构建，全部通过后才继续
-- workflow 会自动递增 `patch` 版本号
-- workflow 会自动同步 `package.json` 与 `public/manifest.json`
-- workflow 会自动创建 `vX.Y.Z` tag、打包 zip、生成 `sha256`，并发布公开 GitHub Release
-- workflow 自己回写版本号时会带上 `[skip release]`，避免无限循环触发
+当前仓库有两条自动化链路：
 
-## 发布前原则
+- `CI` workflow：对 Pull Request 和非 `main` 分支推送执行质量校验
+- `Release` workflow：对 `main` 分支推送执行版本准备、构建、打 tag 和 GitHub Release 发布
 
-- 正式发布始终基于 `dist/` 产物
-- 版本号由 CI 统一管理，不再依赖手工同步
-- 若本次改动涉及权限、AI 接口策略或页面选择器，仍建议做手工回归验证
+自动发布的固定行为如下：
 
-## 建议发布清单
+- 统一使用 Node.js 22
+- 统一执行 `npm ci`
+- 统一执行 `npm test`
+- 统一执行 `npm run typecheck`
+- 统一执行 `npm run build:all`
+- 自动递增 `patch` 版本号
+- 自动同步 `package.json` 与 `public/manifest.json`
+- 自动创建 `vX.Y.Z` tag
+- 自动上传扩展 zip、zip 的 `sha256`、以及 userscript 单文件
+- 自动使用 `[skip release]` 防止 workflow 回写版本时重复触发发布
+
+## 发布产物
+
+每次正式发布会产出以下文件：
+
+- `bilibili-guardian-extension-vX.Y.Z.zip`
+- `bilibili-guardian-extension-vX.Y.Z.zip.sha256`
+- `bilibili-guardian.user.js`
+
+含义分别是：
+
+- 扩展版安装包：给 Chrome / Edge 解压加载使用
+- 扩展版校验文件：用于核对 zip 完整性
+- Tampermonkey 单文件脚本：可直接导入安装
+
+## 发布前建议检查
+
+即使自动化全部通过，以下场景仍建议人工回归一次：
+
+- 首页、搜索、热门、排行榜页面的过滤是否正常
+- 视频页 AI 识别是否能正常发起
+- 缓存命中与手动重跑是否正常
+- 自动跳过是否在阈值命中时正确触发
+- 自定义 OpenAI-Compatible 接口是否能正常请求
+- 扩展版域名权限申请与 Tampermonkey 访问授权是否符合预期
+- 悬浮按钮拖拽、吸附和控制中心开关是否正常
+
+## 自动发布流程细节
+
+### CI workflow
+
+当前 `CI` workflow 会执行：
+
+```bash
+npm ci
+npm test
+npm run typecheck
+npm run build:all
+```
+
+这意味着扩展版与 userscript 版都会在 CI 中被验证。
+
+### Release workflow
+
+当前 `Release` workflow 的关键步骤为：
+
+1. `npm run release:prepare`
+2. `npm test`
+3. `npm run typecheck`
+4. `npm run build:all`
+5. 提交回写的版本文件
+6. 创建 `vX.Y.Z` tag
+7. 打包 `dist/` 为扩展 zip
+8. 生成 zip 的 `sha256`
+9. 上传 zip、checksum 和 `bilibili-guardian.user.js`
+
+## 手动兜底发布流程
+
+如果 GitHub Actions 暂时不可用，可以用下面的步骤手工完成一次接近正式流程的发布。
 
 ### 1. 安装依赖
 
@@ -27,106 +87,58 @@
 npm install
 ```
 
-如果依赖无变化但需要确保环境一致，也建议执行一次。
+### 2. 准备版本号
 
-### 2. 运行质量检查
-
-运行测试：
-
-```bash
-npm test
-```
-
-运行类型检查：
-
-```bash
-npx tsc --noEmit
-```
-
-运行正式构建：
-
-```bash
-npm run build
-```
-
-### 3. 本地手工验收
-
-建议至少检查以下场景：
-
-- 首页推荐流过滤是否生效
-- 搜索页 / 热门页 / 排行榜页过滤是否正常
-- 视频页 AI 分析是否能正常发起
-- 缓存命中是否正常
-- 自动跳过是否在命中阈值时正确触发
-- 自定义 Provider 的动态权限申请是否符合预期
-- 悬浮按钮拖拽、边缘吸附和控制台开关是否正常
-
-## GitHub Actions 自动发布产物
-
-自动发布成功后，GitHub Release 会附带：
-
-- `bilibili-guardian-extension-vX.Y.Z.zip`
-- `bilibili-guardian-extension-vX.Y.Z.zip.sha256`
-
-zip 内包含扩展运行所需的 `dist/` 内容。
-
-## 手动兜底发布流程
-
-如果 GitHub Actions 暂时不可用，可以按下面的方式手动执行一次与自动发布接近的流程。
-
-### 1. 准备版本号
-
-默认策略是：
-
-- 如果仓库还没有 `v*` tag，则首次发布使用当前版本
-- 如果仓库已有最新 tag，例如 `v0.1.3`，则下一次发布版本为 `0.1.4`
-
-可以直接运行：
+执行：
 
 ```bash
 npm run release:prepare
 ```
 
-这个脚本会同步更新：
+该脚本会：
 
-- `package.json`
-- `public/manifest.json`
+- 检查 `package.json` 与 `public/manifest.json` 的版本一致性
+- 根据最新 tag 自动计算下一个版本
+- 更新 `package.json`
+- 更新 `public/manifest.json`
 
-并输出：
+同时它会输出：
 
 - `version`
 - `tag`
 - `artifact_name`
+- `userscript_artifact_name`
 
-### 2. 构建并打包发布产物
+### 3. 运行质量检查
 
-构建成功后，进入 `dist/` 目录，将以下内容打包为 zip：
+```bash
+npm test
+npm run typecheck
+npm run build:all
+```
 
-- `manifest.json`
-- `content.js`
-- `background.js`
-- `chunks/` 目录
+### 4. 准备发布文件
 
-示例命令：
+扩展版打包：
 
 ```bash
 cd dist
-zip -r bilibili-guardian-extension-vX.Y.Z.zip .
+zip -r ../bilibili-guardian-extension-vX.Y.Z.zip .
+cd ..
 ```
 
-生成后的 zip 适用于：
-
-- 本地分享安装
-- GitHub Release 附件
-- 后续扩展商店提交前的基础包
-
-### 3. 生成校验文件
+生成扩展包校验文件：
 
 ```bash
 sha256sum bilibili-guardian-extension-vX.Y.Z.zip > bilibili-guardian-extension-vX.Y.Z.zip.sha256
 ```
 
-### 4. 提交版本文件并打 tag
+userscript 单文件：
+
+- 直接使用 `dist/bilibili-guardian.user.js`
+- 不需要额外再打 zip
+
+### 5. 提交版本文件并打 tag
 
 ```bash
 git add package.json public/manifest.json
@@ -134,74 +146,64 @@ git commit -m "chore(release): vX.Y.Z [skip release]"
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 ```
 
-## GitHub Release 内容建议
+### 6. 上传 GitHub Release
 
-建议 Release 标题格式：
+建议上传以下三个附件：
 
-```text
-v0.1.0
-```
+- `bilibili-guardian-extension-vX.Y.Z.zip`
+- `bilibili-guardian-extension-vX.Y.Z.zip.sha256`
+- `dist/bilibili-guardian.user.js`
 
-建议 Release 正文包含：
+## Release 正文建议
 
-- 本次版本的主要新增能力
-- 修复的问题
-- 已知限制
-- 安装方式说明
+建议在 Release 正文里同时给出两种安装方式。
 
-可参考模板：
+推荐结构：
 
 ```markdown
-## Highlights
+## 浏览器扩展版
 
-- 新增统一悬浮控制中心
-- 新增推荐流过滤与视频页 AI 跳过整合能力
-- 新增自定义 OpenAI-Compatible 接口支持
+- 下载 `bilibili-guardian-extension-vX.Y.Z.zip`
+- 在本地解压缩
+- 打开 `chrome://extensions` 或 `edge://extensions`
+- 开启开发者模式并加载解压后的目录
 
-## Fixes
+## Tampermonkey 油猴脚本版
 
-- 优化悬浮按钮拖拽与边缘吸附体验
-- 优化视频页重复分析与缓存逻辑
+- 下载 `bilibili-guardian.user.js`
+- 在浏览器中安装 Tampermonkey
+- 打开该 `.user.js` 文件并确认导入
 
-## Notes
+## Artifacts
 
-- 当前优先支持 Chrome / Edge Manifest V3
-- 自定义 API 地址首次使用时会请求动态权限
+- `bilibili-guardian-extension-vX.Y.Z.zip`
+- `bilibili-guardian-extension-vX.Y.Z.zip.sha256`
+- `bilibili-guardian.user.js`
 ```
-
-## 如果后续要上架扩展商店
-
-在真正提交到 Chrome Web Store 或其他商店前，建议额外补齐：
-
-- 更正式的扩展图标资源
-- 商店描述与截图
-- 隐私政策
-- 版本变更记录
-- 更严格的权限说明
 
 ## 常见注意事项
 
-### 自动发布跳过了
+### 自动发布被跳过
 
-如果这次进入 `main` 的提交来自 `github-actions[bot]`，或者提交信息包含 `[skip release]`，`release.yml` 会主动跳过，防止重复发布。
+如果进入 `main` 的提交来自 `github-actions[bot]`，或者提交信息里包含 `[skip release]`，`release.yml` 会主动跳过，避免无限循环。
 
-### 版本脚本报 tag 已存在
+### 版本号不同步
 
-这通常意味着：
+当前版本源只有两处需要持久同步：
 
-- 有并发发布
-- 或者仓库里已经存在同名 tag
+- `package.json`
+- `public/manifest.json`
 
-应先检查已有 tag 与最近 workflow 运行记录。
+userscript metadata 的版本会在构建时从 `package.json` 动态读取，不需要手工维护第三份版本号。
 
-### 直接打包源码目录
+### 不要直接发布源码目录
 
-发布时应打包 `dist/`，不要直接把源码目录上传给用户或商店。
+正式分发时只发布构建产物，不要把源码目录直接提供给用户。
 
-### 自定义 API 权限未验证
+### 自定义接口权限问题
 
-如果本次改动了 Provider 或 Base URL 权限逻辑，发布前一定要实际验证一次动态权限申请流程。
+如果本次改动涉及 Provider、Base URL、权限或请求方式，发布前一定要手测：
 
-### 页面选择器变更未手测
-
-推荐流过滤高度依赖页面结构；只通过单元测试并不足以覆盖真实页面回归，建议至少手工验证常见页面。
+- 扩展版的域名权限申请
+- Tampermonkey 的外部请求授权
+- 自定义 OpenAI-Compatible 接口的实际可用性
