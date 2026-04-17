@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "node ./scripts/watch-build.mjs",
     "build": "npm run build:content && npm run build:background",
+    "build:all": "npm run build && npm run build:userscript",
     "build:content": "vite build --config vite.content.config.ts",
     "build:background": "vite build --config vite.background.config.ts",
+    "build:userscript": "vite build --config vite.userscript.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
