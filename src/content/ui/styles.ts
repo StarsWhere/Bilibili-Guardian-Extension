@@ -224,8 +224,7 @@ export function createStyles(): string {
     }
 
     .guardian-video-quick-card-toggle,
-    .guardian-edge-toast-action,
-    .guardian-edge-toast-dismiss {
+    .guardian-edge-toast-action {
       border: 1px solid var(--guardian-border);
       background: rgba(255, 255, 255, 0.12);
       color: var(--guardian-text);
@@ -241,19 +240,10 @@ export function createStyles(): string {
       font-weight: 700;
     }
 
-    .guardian-edge-toast-dismiss {
-      width: 30px;
-      height: 30px;
-      font-size: 16px;
-      line-height: 1;
-    }
-
     .guardian-video-quick-card-toggle:hover,
     .guardian-video-quick-card-toggle:focus-visible,
     .guardian-edge-toast-action:hover,
-    .guardian-edge-toast-action:focus-visible,
-    .guardian-edge-toast-dismiss:hover,
-    .guardian-edge-toast-dismiss:focus-visible {
+    .guardian-edge-toast-action:focus-visible {
       background: var(--guardian-tag);
       border-color: rgba(15, 155, 215, 0.22);
       transform: translateY(-1px);
@@ -274,15 +264,35 @@ export function createStyles(): string {
 
     .guardian-edge-toast {
       display: grid;
-      gap: 10px;
-      padding: 12px 14px;
-      border-radius: 18px;
-      border: 1px solid transparent;
-      background: var(--guardian-bg);
+      gap: 12px;
+      padding: 14px;
+      border-radius: 22px;
+      border: 1px solid var(--guardian-border);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 38%),
+        var(--guardian-card-strong);
       box-shadow: var(--guardian-shadow);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       animation: guardianFadeIn 180ms ease;
+    }
+
+    .guardian-edge-toast-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .guardian-edge-toast-badge {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--guardian-tag);
+      font-size: 12px;
+      font-weight: 800;
     }
 
     .guardian-edge-toast-copy {
@@ -292,23 +302,38 @@ export function createStyles(): string {
     }
 
     .guardian-edge-toast.info {
-      background: rgba(15, 155, 215, 0.1);
-      border-color: rgba(15, 155, 215, 0.16);
+      border-color: rgba(15, 155, 215, 0.18);
     }
 
     .guardian-edge-toast.success {
-      background: rgba(37, 165, 95, 0.12);
-      border-color: rgba(37, 165, 95, 0.16);
+      border-color: rgba(37, 165, 95, 0.18);
     }
 
     .guardian-edge-toast.warning {
-      background: rgba(212, 141, 0, 0.12);
       border-color: rgba(212, 141, 0, 0.18);
     }
 
     .guardian-edge-toast.danger {
-      background: rgba(231, 76, 60, 0.12);
       border-color: rgba(231, 76, 60, 0.18);
+    }
+
+    .guardian-edge-toast-badge.info {
+      color: var(--guardian-primary-strong);
+    }
+
+    .guardian-edge-toast-badge.success {
+      color: var(--guardian-success);
+      background: rgba(37, 165, 95, 0.12);
+    }
+
+    .guardian-edge-toast-badge.warning {
+      color: var(--guardian-warning);
+      background: rgba(212, 141, 0, 0.12);
+    }
+
+    .guardian-edge-toast-badge.danger {
+      color: var(--guardian-danger);
+      background: rgba(231, 76, 60, 0.12);
     }
 
     .guardian-overlay {

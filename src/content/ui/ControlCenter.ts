@@ -225,6 +225,19 @@ function getVideoWaitingSummary(phase: VideoAnalysisPhase): string {
   return "正在识别当前视频，请稍等。";
 }
 
+function toToastLabel(tone: ToastTone): string {
+  switch (tone) {
+    case "success":
+      return "已完成";
+    case "warning":
+      return "请留意";
+    case "danger":
+      return "处理失败";
+    default:
+      return "处理中";
+  }
+}
+
 export class ControlCenter {
   private readonly root: HTMLDivElement;
   private readonly style: HTMLStyleElement;
@@ -1797,11 +1810,15 @@ export class ControlCenter {
     this.toastRegion.innerHTML = this.edgeToasts
       .map((toast) => `
         <section class="guardian-edge-toast ${toast.tone}" data-toast-id="${toast.id}" role="status" aria-live="polite">
-          <div class="guardian-edge-toast-copy">${escapeHtml(toast.text)}</div>
-          <div class="guardian-edge-toast-actions">
-            ${toast.actionLabel ? `<button class="guardian-edge-toast-action" type="button" data-action="toast-action" data-toast-id="${toast.id}">${escapeHtml(toast.actionLabel)}</button>` : ""}
-            <button class="guardian-edge-toast-dismiss" type="button" data-action="toast-dismiss" data-toast-id="${toast.id}" aria-label="关闭提示">×</button>
+          <div class="guardian-edge-toast-head">
+            <span class="guardian-edge-toast-badge ${toast.tone}">${escapeHtml(toToastLabel(toast.tone))}</span>
           </div>
+          <div class="guardian-edge-toast-copy">${escapeHtml(toast.text)}</div>
+          ${toast.actionLabel ? `
+            <div class="guardian-edge-toast-actions">
+              <button class="guardian-edge-toast-action" type="button" data-action="toast-action" data-toast-id="${toast.id}">${escapeHtml(toast.actionLabel)}</button>
+            </div>
+          ` : ""}
         </section>
       `)
       .join("");
@@ -1814,12 +1831,6 @@ export class ControlCenter {
         const toast = this.edgeToasts.find((item) => item.id === toastId);
         toast?.onAction?.();
         this.dismissEdgeToast(toastId);
-      });
-    });
-
-    this.toastRegion.querySelectorAll<HTMLElement>("[data-action='toast-dismiss']").forEach((button) => {
-      button.addEventListener("click", () => {
-        this.dismissEdgeToast(Number(button.dataset.toastId));
       });
     });
   }

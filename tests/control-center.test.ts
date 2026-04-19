@@ -556,6 +556,8 @@ describe("ControlCenter advanced settings", () => {
     expect(toast?.parentElement).toBe(document.querySelector(".guardian-edge-toast-region"));
     expect(toast?.closest(".guardian-video-quick-card")).toBeNull();
     expect(document.querySelector(".guardian-video-quick-card")).toBe(quickCardHost);
+    expect(toast?.textContent).toContain("处理中");
+    expect(document.querySelector(".guardian-edge-toast-dismiss")).toBeNull();
   });
 
   it("switches tabs locally and resets to overview after closing and reopening", async () => {
