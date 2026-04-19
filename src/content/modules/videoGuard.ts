@@ -1,12 +1,19 @@
+import { getVideoAnalysisErrorDetails } from "@/shared/errors";
 import { extractBvid } from "@/shared/url";
 import { timeStringToSeconds } from "@/shared/time";
-import type { ExtensionConfig, VideoAnalysisResult, VideoAnalysisPhase } from "@/shared/types";
+import type {
+  ExtensionConfig,
+  VideoAnalysisErrorDetails,
+  VideoAnalysisResult,
+  VideoAnalysisPhase
+} from "@/shared/types";
 
 interface VideoGuardApp {
   config: ExtensionConfig;
   getCurrentVideoAutoSkip(): boolean;
   setCurrentVideoState(patch: Partial<VideoGuardState>): void;
   log(message: string): void;
+  logVideoDiagnostic(details: VideoAnalysisErrorDetails): void;
   getCachedVideoResult(bvid: string): Promise<VideoAnalysisResult | null>;
   analyzeVideo(payload: { bvid: string; topComment: string; force?: boolean; requestId: string }): Promise<VideoAnalysisResult>;
   cancelVideoAnalysis(requestId: string): Promise<void>;
@@ -17,6 +24,7 @@ interface VideoGuardState {
   bvid: string | null;
   result: VideoAnalysisResult | null;
   error: string | null;
+  errorDetails: VideoAnalysisErrorDetails | null;
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -64,7 +72,8 @@ export class VideoGuard {
       bvid,
       phase: "collecting",
       error: null,
-      result: null
+      result: null,
+      errorDetails: null
     });
 
     const cached = await this.app.getCachedVideoResult(bvid);
@@ -74,7 +83,8 @@ export class VideoGuard {
         bvid,
         phase: "cached",
         result: cached,
-        error: null
+        error: null,
+        errorDetails: null
       });
       this.armSkipIfNeeded(cached);
       this.app.log(`VideoGuard 命中缓存 ${bvid}`);
@@ -126,7 +136,8 @@ export class VideoGuard {
     this.app.setCurrentVideoState({
       phase: "collecting",
       error: null,
-      result: null
+      result: null,
+      errorDetails: null
     });
 
     const topComment = await collectTopComment();
@@ -147,17 +158,24 @@ export class VideoGuard {
       this.app.setCurrentVideoState({
         phase: result.cacheHit ? "cached" : "ready",
         result,
-        error: null
+        error: null,
+        errorDetails: null
       });
       this.armSkipIfNeeded(result);
       this.app.log(`VideoGuard 完成分析 ${this.currentBvid}`);
     } catch (error) {
+      const details = getVideoAnalysisErrorDetails(error);
+      const message = error instanceof Error ? error.message : String(error);
       this.app.setCurrentVideoState({
         phase: "error",
-        error: error instanceof Error ? error.message : String(error),
-        result: null
+        error: message,
+        result: null,
+        errorDetails: details
       });
-      this.app.log(`VideoGuard 分析失败：${error instanceof Error ? error.message : String(error)}`);
+      this.app.log(`VideoGuard 分析失败：${message}`);
+      if (details) {
+        this.app.logVideoDiagnostic(details);
+      }
     } finally {
       this.currentRequestId = null;
     }
