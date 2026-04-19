@@ -5,6 +5,15 @@ import baseConfig from "./vite.config";
 
 const packageJson = JSON.parse(fs.readFileSync(resolve(__dirname, "package.json"), "utf8")) as { version: string };
 const USERSCRIPT_ICON_URL = "https://raw.githubusercontent.com/StarsWhere/Bilibili-Guardian-Extension/main/public/icon.png";
+const USERSCRIPT_CONNECT_DOMAINS = [
+  "api.bilibili.com",
+  "comment.bilibili.com",
+  "api.openai.com",
+  "api.deepseek.com",
+  "generativelanguage.googleapis.com",
+  "api.anthropic.com",
+  "*"
+];
 
 const banner = `// ==UserScript==
 // @name         Bilibili Guardian
@@ -20,7 +29,7 @@ const banner = `// ==UserScript==
 // @grant        GM_registerMenuCommand
 // @grant        GM_addValueChangeListener
 // @grant        GM_removeValueChangeListener
-// @connect      *
+${USERSCRIPT_CONNECT_DOMAINS.map((domain) => `// @connect      ${domain}`).join("\n")}
 // ==/UserScript==`;
 
 function userscriptMetadataPlugin() {
