@@ -394,6 +394,62 @@ describe("ControlCenter advanced settings", () => {
   });
 
   it("resets the video quick card expansion state when switching to a new video", async () => {
+  it("shows the collecting state without reusing the previous result and disables rerun actions", () => {
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: true,
+        activeTab: "video"
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        apiKey: "token"
+      }
+    };
+
+    const runtime = createRuntime();
+    runtime.route = "video";
+    runtime.videoBvid = "BV1collecting";
+    runtime.videoPhase = "collecting";
+    runtime.videoResult = {
+      probability: 82,
+      finalProbability: 82,
+      start: "00:30",
+      end: "01:10",
+      note: "旧结果不应该继续显示。",
+      source: "live",
+      cacheHit: false,
+      danmakuCount: 18
+    };
+
+    const controlCenter = new ControlCenter(config, runtime, {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig: vi.fn().mockResolvedValue(undefined),
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    const quickPrimary = document.querySelector<HTMLElement>("[data-action='video-quick-primary']");
+    const panelRunButton = document.querySelector<HTMLElement>("[data-action='run-video']");
+
+    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.textContent).toContain("识别中");
+    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.textContent).toContain("正在整理当前视频的弹幕和评论，请稍等。");
+    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.textContent).not.toContain("旧结果不应该继续显示。");
+    expect(quickPrimary?.textContent).toContain("识别中");
+    expect(quickPrimary?.hasAttribute("disabled")).toBe(true);
+    expect(panelRunButton?.textContent).toContain("正在识别当前视频");
+    expect(panelRunButton?.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("resets the video quick card expansion state when switching to a new video", async () => {
     const config: ExtensionConfig = {
       ...DEFAULT_CONFIG,
       ui: {

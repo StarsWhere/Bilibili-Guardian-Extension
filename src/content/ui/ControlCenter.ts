@@ -213,6 +213,18 @@ function getVideoSummary(result: VideoAnalysisResult | null, error: string | nul
   return result.note || "已获得本次识别说明。";
 }
 
+function getVideoWaitingSummary(phase: VideoAnalysisPhase): string {
+  if (phase === "collecting") {
+    return "正在整理当前视频的弹幕和评论，请稍等。";
+  }
+
+  if (phase === "analyzing") {
+    return "正在调用 AI 识别当前视频，请稍等。";
+  }
+
+  return "正在识别当前视频，请稍等。";
+}
+
 export class ControlCenter {
   private readonly root: HTMLDivElement;
   private readonly style: HTMLStyleElement;
@@ -649,6 +661,7 @@ export class ControlCenter {
     const serviceReady = hasConfiguredRecognitionService(this.config);
     const summary = this.runtime.videoError || status.summary;
     const primaryAction = this.getVideoQuickPrimaryAction(serviceReady);
+    const actionDisabled = this.isVideoAnalysisInFlight();
 
     this.miniCard.classList.add("visible");
     this.miniCard.classList.toggle("collapsed", this.videoQuickCardCollapsed);
@@ -678,8 +691,8 @@ export class ControlCenter {
           </div>
           <div class="guardian-video-quick-card-summary">${escapeHtml(summary)}</div>
           <div class="guardian-video-quick-card-actions">
-            <button class="guardian-btn primary" type="button" data-action="video-quick-primary">${escapeHtml(primaryAction.label)}</button>
-            ${this.renderVideoQuickSecondaryActions(serviceReady)}
+            <button class="guardian-btn primary" type="button" data-action="video-quick-primary" ${actionDisabled ? "disabled" : ""}>${escapeHtml(primaryAction.label)}</button>
+            ${this.renderVideoQuickSecondaryActions(serviceReady, actionDisabled)}
           </div>
           <label class="guardian-video-quick-card-switch ${!this.runtime.videoBvid ? "disabled" : ""}">
             <span>当前视频自动跳过</span>
@@ -692,6 +705,13 @@ export class ControlCenter {
   }
 
   private getVideoQuickPrimaryAction(serviceReady: boolean): { label: string; action: VideoQuickCardAction } {
+    if (this.isVideoAnalysisInFlight()) {
+      return {
+        label: "识别中…",
+        action: "run-video"
+      };
+    }
+
     if (!serviceReady) {
       return {
         label: "去配置识别服务",
@@ -712,11 +732,11 @@ export class ControlCenter {
     };
   }
 
-  private renderVideoQuickSecondaryActions(serviceReady: boolean): string {
+  private renderVideoQuickSecondaryActions(serviceReady: boolean, actionDisabled: boolean): string {
     const buttons: string[] = [];
 
     if (serviceReady && this.runtime.videoPhase === "error") {
-      buttons.push(`<button class="guardian-btn" type="button" data-action="video-quick-run-video">重新识别</button>`);
+      buttons.push(`<button class="guardian-btn" type="button" data-action="video-quick-run-video" ${actionDisabled ? "disabled" : ""}>重新识别</button>`);
     }
 
     buttons.push(`<button class="guardian-btn" type="button" data-action="video-quick-open-settings">完整设置</button>`);
@@ -730,10 +750,16 @@ export class ControlCenter {
     });
 
     this.miniCard.querySelector<HTMLElement>("[data-action='video-quick-primary']")?.addEventListener("click", () => {
+      if (this.isVideoAnalysisInFlight()) {
+        return;
+      }
       void this.handleVideoQuickAction(primaryAction);
     });
 
     this.miniCard.querySelector<HTMLElement>("[data-action='video-quick-run-video']")?.addEventListener("click", () => {
+      if (this.isVideoAnalysisInFlight()) {
+        return;
+      }
       void this.handleVideoQuickAction("run-video");
     });
 
@@ -882,7 +908,7 @@ export class ControlCenter {
         <div class="guardian-actions">
           <button class="guardian-btn primary" type="button" data-action="run-feed" ${this.runtime.route === "feed" ? "" : "disabled"}>立即整理当前页面</button>
           ${serviceReady
-            ? `<button class="guardian-btn" type="button" data-action="run-video" ${this.runtime.route === "video" ? "" : "disabled"}>重新识别当前视频</button>`
+            ? `<button class="guardian-btn" type="button" data-action="run-video" ${this.runtime.route === "video" && !this.isVideoAnalysisInFlight() ? "" : "disabled"}>${this.isVideoAnalysisInFlight() ? "正在识别当前视频" : "重新识别当前视频"}</button>`
             : `<button class="guardian-btn" type="button" data-action="goto-advanced-service">去完成识别服务设置</button>`}
         </div>
       </section>
@@ -978,7 +1004,7 @@ export class ControlCenter {
         <div class="guardian-actions">
           <button class="guardian-btn primary" type="button" data-action="save-video">保存视频跳过设置</button>
           ${serviceReady
-            ? `<button class="guardian-btn" type="button" data-action="run-video" ${this.runtime.route === "video" ? "" : "disabled"}>重新识别当前视频</button>`
+            ? `<button class="guardian-btn" type="button" data-action="run-video" ${this.runtime.route === "video" && !this.isVideoAnalysisInFlight() ? "" : "disabled"}>${this.isVideoAnalysisInFlight() ? "正在识别当前视频" : "重新识别当前视频"}</button>`
             : `<button class="guardian-btn" type="button" data-action="goto-advanced-service">去完成识别服务设置</button>`}
         </div>
       </section>
@@ -1304,7 +1330,7 @@ export class ControlCenter {
         phase: toVideoPhaseLabel(this.runtime.videoPhase),
         probability,
         range,
-        summary
+        summary: getVideoWaitingSummary(this.runtime.videoPhase)
       };
     }
 
@@ -1362,6 +1388,10 @@ export class ControlCenter {
     }
 
     return "当前页面暂未接管，进入首页、搜索结果、热门或视频页后会自动生效。";
+  }
+
+  private isVideoAnalysisInFlight(): boolean {
+    return this.runtime.videoPhase === "collecting" || this.runtime.videoPhase === "analyzing";
   }
 
   private bindPanelEvents(): void {
@@ -1438,6 +1468,9 @@ export class ControlCenter {
 
     this.panel.querySelectorAll<HTMLElement>("[data-action='run-video']").forEach((button) => {
       button.addEventListener("click", () => {
+        if (button.hasAttribute("disabled")) {
+          return;
+        }
         this.callbacks.onRunVideoAnalysis();
         this.showEdgeToast("已开始重新识别当前视频。", "success");
       });
