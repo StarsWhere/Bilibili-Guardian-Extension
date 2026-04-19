@@ -4,12 +4,14 @@ import { resolve } from "node:path";
 import baseConfig from "./vite.config";
 
 const packageJson = JSON.parse(fs.readFileSync(resolve(__dirname, "package.json"), "utf8")) as { version: string };
+const USERSCRIPT_ICON_URL = "https://raw.githubusercontent.com/StarsWhere/Bilibili-Guardian-Extension/main/public/icon.png";
 
 const banner = `// ==UserScript==
 // @name         Bilibili Guardian
 // @namespace    https://github.com/StarsWhere/Bilibili-Guardian-Extension
 // @version      ${packageJson.version}
 // @description  在 Bilibili 页面提供推荐流过滤、视频 AI 广告检测与自动跳过控制台。
+// @icon         ${USERSCRIPT_ICON_URL}
 // @match        https://www.bilibili.com/*
 // @run-at       document-idle
 // @grant        GM_getValue
