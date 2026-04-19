@@ -8,6 +8,13 @@ import type { RouteModule } from "@/shared/router";
 import type { DeepPartial, ExtensionConfig, VideoAnalysisErrorDetails } from "@/shared/types";
 import { classifyFeedPage, isVideoPage } from "@/shared/url";
 
+function hasOwnPatchField<T extends object, K extends PropertyKey>(
+  patch: T,
+  key: K
+): patch is T & Record<K, unknown> {
+  return Object.prototype.hasOwnProperty.call(patch, key);
+}
+
 export class GuardianApp {
   config!: ExtensionConfig;
   runtime: GuardianRuntimeState = {
@@ -69,11 +76,21 @@ export class GuardianApp {
         const previousError = this.runtime.videoError;
         const previousResult = this.runtime.videoResult;
         this.runtime.route = "video";
-        this.runtime.videoBvid = patch.bvid ?? this.runtime.videoBvid;
-        this.runtime.videoPhase = patch.phase ?? this.runtime.videoPhase;
-        this.runtime.videoError = patch.error ?? this.runtime.videoError;
-        this.runtime.videoResult = patch.result ?? this.runtime.videoResult;
-        this.runtime.videoErrorDetails = patch.errorDetails ?? this.runtime.videoErrorDetails;
+        if (hasOwnPatchField(patch, "bvid")) {
+          this.runtime.videoBvid = patch.bvid as typeof this.runtime.videoBvid;
+        }
+        if (hasOwnPatchField(patch, "phase")) {
+          this.runtime.videoPhase = patch.phase as typeof this.runtime.videoPhase;
+        }
+        if (hasOwnPatchField(patch, "error")) {
+          this.runtime.videoError = patch.error as typeof this.runtime.videoError;
+        }
+        if (hasOwnPatchField(patch, "result")) {
+          this.runtime.videoResult = patch.result as typeof this.runtime.videoResult;
+        }
+        if (hasOwnPatchField(patch, "errorDetails")) {
+          this.runtime.videoErrorDetails = patch.errorDetails as typeof this.runtime.videoErrorDetails;
+        }
         this.render();
         this.maybeShowVideoStateToast(previousPhase, previousError, previousResult);
       },
