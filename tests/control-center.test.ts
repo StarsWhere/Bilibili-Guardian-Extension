@@ -279,8 +279,229 @@ describe("ControlCenter advanced settings", () => {
     expect(detail?.textContent).toContain("Request Body:");
     const logs = document.querySelectorAll(".guardian-diagnostics");
     expect(logs[3]?.textContent).toContain("VideoGuard 分析失败");
-
   });
+
+  it("shows edge toasts even when the full panel is closed", () => {
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: false,
+        activeTab: "overview"
+      }
+    };
+
+    const runtime = createRuntime();
+    const controlCenter = new ControlCenter(config, runtime, {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig: vi.fn().mockResolvedValue(undefined),
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+    controlCenter.showEdgeToast("识别完成，建议跳过。", "success", {
+      actionLabel: "查看"
+    });
+
+    const toast = document.querySelector<HTMLElement>(".guardian-edge-toast");
+    expect(toast?.textContent).toContain("识别完成，建议跳过。");
+    expect(document.querySelector(".guardian-overlay.open")).toBeNull();
+  });
+
+  it("renders the video quick card and opens the target tab without saving config", async () => {
+    let config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: false,
+        activeTab: "overview"
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        apiKey: "token"
+      }
+    };
+
+    const runtime = createRuntime();
+    runtime.route = "video";
+    runtime.videoBvid = "BV1quick";
+    runtime.videoPhase = "ready";
+    runtime.currentVideoAutoSkip = true;
+    runtime.videoResult = {
+      probability: 82,
+      finalProbability: 82,
+      start: "00:30",
+      end: "01:10",
+      note: "当前视频存在较明显的口播片段。",
+      source: "live",
+      cacheHit: false,
+      danmakuCount: 18
+    };
+
+    const onRunVideoAnalysis = vi.fn();
+    const onToggleCurrentVideoAutoSkip = vi.fn();
+    let controlCenter!: ControlCenter;
+    const onTogglePanel = vi.fn(() => {
+      config = {
+        ...config,
+        ui: {
+          ...config.ui,
+          panelOpen: !config.ui.panelOpen
+        }
+      };
+      controlCenter.update(config, runtime);
+    });
+    const onSaveConfig = vi.fn().mockResolvedValue(undefined);
+
+    controlCenter = new ControlCenter(config, runtime, {
+      onTogglePanel,
+      onSetTheme: vi.fn(),
+      onSaveConfig,
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis,
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip,
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    const card = document.querySelector<HTMLElement>("[data-role='video-quick-card']");
+    expect(card?.textContent).toContain("视频快捷操作");
+    expect(card?.textContent).toContain("00:30 - 01:10");
+
+    document.querySelector<HTMLElement>("[data-action='video-quick-primary']")?.click();
+    expect(onRunVideoAnalysis).toHaveBeenCalledTimes(1);
+
+    document.querySelector<HTMLElement>("[data-action='video-quick-open-settings']")?.click();
+    await flushPromises();
+
+    expect(onTogglePanel).toHaveBeenCalledTimes(1);
+    expect(onSaveConfig).not.toHaveBeenCalled();
+    expect(document.querySelector(".guardian-tab.active")?.textContent).toContain("视频跳过");
+
+    const checkbox = document.querySelector<HTMLInputElement>("[data-action='video-quick-toggle-skip']");
+    checkbox!.checked = false;
+    checkbox!.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(onToggleCurrentVideoAutoSkip).toHaveBeenCalledWith(false);
+  });
+
+  it("resets the video quick card expansion state when switching to a new video", async () => {
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: false,
+        activeTab: "overview"
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        apiKey: "token"
+      }
+    };
+
+    const runtime = createRuntime();
+    runtime.route = "video";
+    runtime.videoBvid = "BV1first";
+    runtime.videoPhase = "ready";
+    runtime.videoResult = {
+      probability: 60,
+      finalProbability: 60,
+      start: "00:10",
+      end: "00:40",
+      note: "第一次视频结果。",
+      source: "live",
+      cacheHit: false,
+      danmakuCount: 12
+    };
+
+    const controlCenter = new ControlCenter(config, runtime, {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig: vi.fn().mockResolvedValue(undefined),
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    document.querySelector<HTMLElement>("[data-action='toggle-video-quick-card']")?.click();
+    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.dataset.state).toBe("collapsed");
+
+    const sameVideoRuntime = {
+      ...runtime,
+      videoPhase: "cached" as const
+    };
+    controlCenter.update(config, sameVideoRuntime);
+    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.dataset.state).toBe("collapsed");
+
+    const nextVideoRuntime = {
+      ...runtime,
+      videoBvid: "BV1second",
+      videoResult: {
+        ...runtime.videoResult!,
+        note: "第二个视频结果。"
+      }
+    };
+    controlCenter.update(config, nextVideoRuntime);
+
+    await flushPromises();
+    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.dataset.state).toBe("expanded");
+  });
+
+  it("keeps edge toasts in an independent host without replacing the quick card host", () => {
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: false,
+        activeTab: "overview"
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        apiKey: "token"
+      }
+    };
+
+    const runtime = createRuntime();
+    runtime.route = "video";
+    runtime.videoBvid = "BV1toast";
+    runtime.videoPhase = "ready";
+
+    const controlCenter = new ControlCenter(config, runtime, {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig: vi.fn().mockResolvedValue(undefined),
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    const quickCardHost = document.querySelector(".guardian-video-quick-card");
+    controlCenter.showEdgeToast("toast 文案", "info");
+
+    const toast = document.querySelector<HTMLElement>(".guardian-edge-toast");
+    expect(toast?.parentElement).toBe(document.querySelector(".guardian-edge-toast-region"));
+    expect(toast?.closest(".guardian-video-quick-card")).toBeNull();
+    expect(document.querySelector(".guardian-video-quick-card")).toBe(quickCardHost);
+  });
+
   it("switches tabs locally and resets to overview after closing and reopening", async () => {
     let config: ExtensionConfig = {
       ...DEFAULT_CONFIG,
@@ -333,6 +554,5 @@ describe("ControlCenter advanced settings", () => {
 
     expect(document.querySelector(".guardian-tab.active")?.textContent).toContain("主页概览");
     expect(onSaveConfig).not.toHaveBeenCalled();
-  });
   });
 });

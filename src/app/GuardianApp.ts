@@ -1,7 +1,7 @@
 import { FeedGuard } from "@/content/modules/feedGuard";
 import { VideoGuard } from "@/content/modules/videoGuard";
 import { RouteManager } from "@/content/router";
-import { ControlCenter, type GuardianRuntimeState } from "@/content/ui/ControlCenter";
+import { ControlCenter, hasConfiguredRecognitionService, type GuardianRuntimeState } from "@/content/ui/ControlCenter";
 import { DEFAULT_CONFIG } from "@/shared/config";
 import type { GuardianPlatformServices } from "@/shared/platform";
 import type { RouteModule } from "@/shared/router";
@@ -65,6 +65,9 @@ export class GuardianApp {
       },
       getCurrentVideoAutoSkip: () => this.runtime.currentVideoAutoSkip,
       setCurrentVideoState: (patch) => {
+        const previousPhase = this.runtime.videoPhase;
+        const previousError = this.runtime.videoError;
+        const previousResult = this.runtime.videoResult;
         this.runtime.route = "video";
         this.runtime.videoBvid = patch.bvid ?? this.runtime.videoBvid;
         this.runtime.videoPhase = patch.phase ?? this.runtime.videoPhase;
@@ -72,6 +75,7 @@ export class GuardianApp {
         this.runtime.videoResult = patch.result ?? this.runtime.videoResult;
         this.runtime.videoErrorDetails = patch.errorDetails ?? this.runtime.videoErrorDetails;
         this.render();
+        this.maybeShowVideoStateToast(previousPhase, previousError, previousResult);
       },
       log: (message) => this.log(message),
       logVideoDiagnostic: (details) => this.logVideoDiagnostic(details),
@@ -91,6 +95,15 @@ export class GuardianApp {
           this.runtime.pageScope = null;
           this.runtime.currentVideoAutoSkip = this.config.video.defaultAutoSkip;
           this.render();
+          if (!hasConfiguredRecognitionService(this.config)) {
+            this.ui.showEdgeToast("视频识别服务还没设置好。", "warning", {
+              durationMs: 4200,
+              actionLabel: "去配置",
+              onAction: () => {
+                void this.ui.openAdvancedPanelSection("service");
+              }
+            });
+          }
           await this.videoGuard.mount(currentUrl);
         },
         unmount: async () => {
@@ -200,10 +213,64 @@ export class GuardianApp {
     }
   }
 
-
   private render(): void {
     document.body.dataset.guardianTheme = this.config?.ui?.theme ?? "light";
     this.ui.update(this.config, this.runtime);
+  }
+
+  private maybeShowVideoStateToast(
+    previousPhase: GuardianRuntimeState["videoPhase"],
+    previousError: GuardianRuntimeState["videoError"],
+    previousResult: GuardianRuntimeState["videoResult"]
+  ): void {
+    if (this.runtime.route !== "video") {
+      return;
+    }
+
+    if (this.runtime.videoPhase === previousPhase && this.runtime.videoError === previousError && this.runtime.videoResult === previousResult) {
+      return;
+    }
+
+    if (this.runtime.videoPhase === "analyzing" && previousPhase !== "analyzing") {
+      this.ui.showEdgeToast("正在识别当前视频。", "info", { durationMs: 2200 });
+      return;
+    }
+
+    if (this.runtime.videoPhase === "cached" && previousPhase !== "cached") {
+      this.ui.showEdgeToast("已直接使用上次识别结果。", "info", { durationMs: 2600 });
+      return;
+    }
+
+    if (this.runtime.videoPhase === "ready" && previousPhase !== "ready" && this.runtime.videoResult) {
+      const result = this.runtime.videoResult;
+      if (result.finalProbability >= this.config.video.probabilityThreshold && result.start && result.end) {
+        this.ui.showEdgeToast(`识别完成，建议在 ${result.start} - ${result.end} 跳过。`, "success", {
+          durationMs: 3600
+        });
+      } else {
+        this.ui.showEdgeToast("识别完成，当前没有明显需要跳过的片段。", "info", {
+          durationMs: 3200
+        });
+      }
+      return;
+    }
+
+    if (this.runtime.videoPhase === "error" && this.runtime.videoError && this.runtime.videoError !== previousError) {
+      this.ui.showEdgeToast(`视频识别失败：${this.runtime.videoError}`, "danger", {
+        durationMs: 5200,
+        actionLabel: "查看排查",
+        onAction: () => {
+          void this.ui.openAdvancedPanelSection("diagnostics");
+        }
+      });
+      return;
+    }
+
+    if (this.runtime.videoPhase === "skipped" && previousPhase !== "skipped" && this.runtime.videoResult?.start && this.runtime.videoResult?.end) {
+      this.ui.showEdgeToast(`已自动跳过 ${this.runtime.videoResult.start} - ${this.runtime.videoResult.end}。`, "success", {
+        durationMs: 3200
+      });
+    }
   }
 
   private shouldRefreshRoute(nextConfig: ExtensionConfig, previousConfig = this.config): boolean {

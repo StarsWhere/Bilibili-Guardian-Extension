@@ -42,10 +42,19 @@ interface ControlCenterCallbacks {
 type DisplayTabId = "overview" | "feed" | "video" | "advanced";
 type ToastTone = "info" | "success" | "warning" | "danger";
 type AdvancedSectionId = "service" | "preferences" | "diagnostics";
+type VideoQuickCardAction = "run-video" | "open-video-settings" | "open-service-settings" | "open-diagnostics";
 
 interface PanelSnapshot {
   focusSelector: string | null;
   scrollTop: number;
+}
+
+interface EdgeToastState {
+  id: number;
+  text: string;
+  tone: ToastTone;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 function linesToList(value: string): string[] {
@@ -208,8 +217,14 @@ export class ControlCenter {
   private readonly root: HTMLDivElement;
   private readonly style: HTMLStyleElement;
   private readonly button: HTMLButtonElement;
+  private readonly miniCard: HTMLDivElement;
+  private readonly toastRegion: HTMLDivElement;
   private readonly overlay: HTMLDivElement;
   private readonly panel: HTMLDivElement;
+  private readonly panelHeader: HTMLDivElement;
+  private readonly panelTabs: HTMLDivElement;
+  private readonly panelBody: HTMLDivElement;
+  private readonly panelFooter: HTMLDivElement;
   private config: ExtensionConfig;
   private runtime: GuardianRuntimeState;
   private availableModels: string[] = [];
@@ -221,9 +236,12 @@ export class ControlCenter {
   private restoreFocusTarget: HTMLElement | null = null;
   private previousBodyOverflow = "";
   private previousHtmlOverflow = "";
+  private edgeToasts: EdgeToastState[] = [];
+  private toastTimers = new Map<number, number>();
+  private nextToastId = 1;
+  private videoQuickCardCollapsed = false;
+  private videoQuickCardVideoKey: string | null = null;
   private panelTab: DisplayTabId;
-  private toast: { text: string; tone: ToastTone } | null = null;
-  private toastTimer: number | null = null;
 
   constructor(initialConfig: ExtensionConfig, initialRuntime: GuardianRuntimeState, private readonly callbacks: ControlCenterCallbacks) {
     this.config = initialConfig;
@@ -236,6 +254,10 @@ export class ControlCenter {
     this.button = document.createElement("button");
     this.button.className = "guardian-floating-btn";
     this.button.type = "button";
+    this.miniCard = document.createElement("div");
+    this.miniCard.className = "guardian-video-quick-card";
+    this.toastRegion = document.createElement("div");
+    this.toastRegion.className = "guardian-edge-toast-region";
     this.overlay = document.createElement("div");
     this.overlay.className = "guardian-overlay";
     this.panel = document.createElement("div");
@@ -243,11 +265,20 @@ export class ControlCenter {
     this.panel.setAttribute("role", "dialog");
     this.panel.setAttribute("aria-modal", "true");
     this.panel.tabIndex = -1;
+    this.panelHeader = document.createElement("div");
+    this.panelHeader.className = "guardian-modal-header";
+    this.panelTabs = document.createElement("div");
+    this.panelTabs.className = "guardian-tabs";
+    this.panelBody = document.createElement("div");
+    this.panelBody.className = "guardian-modal-body";
+    this.panelFooter = document.createElement("div");
+    this.panelFooter.className = "guardian-modal-footer";
   }
 
   mount(): void {
+    this.panel.append(this.panelHeader, this.panelTabs, this.panelBody, this.panelFooter);
     this.overlay.appendChild(this.panel);
-    this.root.append(this.style, this.button, this.overlay);
+    this.root.append(this.style, this.button, this.miniCard, this.toastRegion, this.overlay);
     document.body.appendChild(this.root);
     this.bindFloatingButton();
     this.bindGlobalEvents();
@@ -260,6 +291,34 @@ export class ControlCenter {
     this.render();
   }
 
+  public showEdgeToast(
+    text: string,
+    tone: ToastTone,
+    options: { durationMs?: number; actionLabel?: string; onAction?: () => void } = {}
+  ): void {
+    const toast: EdgeToastState = {
+      id: this.nextToastId,
+      text,
+      tone,
+      actionLabel: options.actionLabel,
+      onAction: options.onAction
+    };
+    this.nextToastId += 1;
+
+    this.edgeToasts = [...this.edgeToasts, toast].slice(-4);
+    this.renderEdgeToasts();
+
+    const durationMs = options.durationMs ?? 2600;
+    if (durationMs <= 0) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      this.dismissEdgeToast(toast.id);
+    }, durationMs);
+    this.toastTimers.set(toast.id, timerId);
+  }
+
   public async openPanel(tab: PanelTabId = "overview"): Promise<void> {
     this.panelTab = normalizeTab(tab);
 
@@ -270,6 +329,12 @@ export class ControlCenter {
     }
 
     this.renderModal();
+  }
+
+  public async openAdvancedPanelSection(section: AdvancedSectionId): Promise<void> {
+    this.pendingAdvancedSection = section;
+    this.expandedAdvancedSection = section;
+    await this.openPanel("advanced");
   }
 
   private bindGlobalEvents(): void {
@@ -424,11 +489,9 @@ export class ControlCenter {
 
     const activeElement = document.activeElement as HTMLElement | null;
     const focusSelector = activeElement ? this.getFocusableSelector(activeElement) : null;
-    const body = this.panel.querySelector<HTMLElement>(".guardian-modal-body");
-
     return {
       focusSelector,
-      scrollTop: body?.scrollTop ?? 0
+      scrollTop: this.panelBody.scrollTop
     };
   }
 
@@ -437,10 +500,7 @@ export class ControlCenter {
       return;
     }
 
-    const body = this.panel.querySelector<HTMLElement>(".guardian-modal-body");
-    if (body) {
-      body.scrollTop = snapshot.scrollTop;
-    }
+    this.panelBody.scrollTop = snapshot.scrollTop;
 
     if (snapshot.focusSelector) {
       this.panel.querySelector<HTMLElement>(snapshot.focusSelector)?.focus();
@@ -486,6 +546,7 @@ export class ControlCenter {
   private render(): void {
     const wasOpen = this.isOpen;
     const isOpen = this.config.ui.panelOpen;
+    this.syncVideoQuickCardState();
 
     if (!wasOpen && isOpen) {
       this.resetDraftConfig();
@@ -493,6 +554,8 @@ export class ControlCenter {
 
     document.body.dataset.guardianTheme = this.config.ui.theme;
     this.renderButton();
+    this.renderVideoQuickCard();
+    this.renderEdgeToasts();
     this.renderModal();
 
     this.isOpen = isOpen;
@@ -503,6 +566,17 @@ export class ControlCenter {
       this.pendingAdvancedSection = null;
       this.panelTab = "overview";
       this.handleClose();
+    }
+  }
+
+  private syncVideoQuickCardState(): void {
+    const nextVideoKey = this.runtime.route === "video"
+      ? this.runtime.videoBvid ?? "__video__"
+      : null;
+
+    if (nextVideoKey !== this.videoQuickCardVideoKey) {
+      this.videoQuickCardVideoKey = nextVideoKey;
+      this.videoQuickCardCollapsed = false;
     }
   }
 
@@ -564,6 +638,135 @@ export class ControlCenter {
     this.button.style.top = `${this.config.ui.floatingButtonPosition.y}px`;
   }
 
+  private renderVideoQuickCard(): void {
+    if (this.runtime.route !== "video") {
+      this.miniCard.classList.remove("visible", "collapsed");
+      this.miniCard.innerHTML = "";
+      return;
+    }
+
+    const status = this.getVideoStatusView();
+    const serviceReady = hasConfiguredRecognitionService(this.config);
+    const summary = this.runtime.videoError || status.summary;
+    const primaryAction = this.getVideoQuickPrimaryAction(serviceReady);
+
+    this.miniCard.classList.add("visible");
+    this.miniCard.classList.toggle("collapsed", this.videoQuickCardCollapsed);
+    this.miniCard.innerHTML = this.videoQuickCardCollapsed
+      ? `
+        <div class="guardian-video-quick-card-shell" data-role="video-quick-card" data-state="collapsed">
+          <div class="guardian-video-quick-card-collapsed">
+            <span class="guardian-pill ${status.tone}">${escapeHtml(status.pill)}</span>
+            <span class="guardian-video-quick-card-inline">${escapeHtml(status.phase)}</span>
+            <button class="guardian-video-quick-card-toggle" type="button" data-action="toggle-video-quick-card" aria-label="展开视频快捷卡">展开</button>
+          </div>
+        </div>
+      `
+      : `
+        <div class="guardian-video-quick-card-shell" data-role="video-quick-card" data-state="expanded">
+          <div class="guardian-video-quick-card-head">
+            <div>
+              <div class="guardian-label">视频快捷操作</div>
+              <div class="guardian-note">${escapeHtml(this.runtime.videoBvid ? `当前视频：${this.runtime.videoBvid}` : "当前视频状态已接管")}</div>
+            </div>
+            <button class="guardian-video-quick-card-toggle" type="button" data-action="toggle-video-quick-card" aria-label="收起视频快捷卡">收起</button>
+          </div>
+          <div class="guardian-video-quick-card-status">
+            <span class="guardian-pill ${status.tone}">${escapeHtml(status.pill)}</span>
+            <span class="guardian-video-quick-card-inline">${escapeHtml(status.probability)}</span>
+            <span class="guardian-video-quick-card-inline">${escapeHtml(status.range)}</span>
+          </div>
+          <div class="guardian-video-quick-card-summary">${escapeHtml(summary)}</div>
+          <div class="guardian-video-quick-card-actions">
+            <button class="guardian-btn primary" type="button" data-action="video-quick-primary">${escapeHtml(primaryAction.label)}</button>
+            ${this.renderVideoQuickSecondaryActions(serviceReady)}
+          </div>
+          <label class="guardian-video-quick-card-switch ${!this.runtime.videoBvid ? "disabled" : ""}">
+            <span>当前视频自动跳过</span>
+            <input type="checkbox" data-action="video-quick-toggle-skip" ${this.runtime.currentVideoAutoSkip ? "checked" : ""} ${this.runtime.videoBvid ? "" : "disabled"}>
+          </label>
+        </div>
+      `;
+
+    this.bindVideoQuickCardEvents(primaryAction.action);
+  }
+
+  private getVideoQuickPrimaryAction(serviceReady: boolean): { label: string; action: VideoQuickCardAction } {
+    if (!serviceReady) {
+      return {
+        label: "去配置识别服务",
+        action: "open-service-settings"
+      };
+    }
+
+    if (this.runtime.videoPhase === "error") {
+      return {
+        label: "查看排查",
+        action: "open-diagnostics"
+      };
+    }
+
+    return {
+      label: "重新识别",
+      action: "run-video"
+    };
+  }
+
+  private renderVideoQuickSecondaryActions(serviceReady: boolean): string {
+    const buttons: string[] = [];
+
+    if (serviceReady && this.runtime.videoPhase === "error") {
+      buttons.push(`<button class="guardian-btn" type="button" data-action="video-quick-run-video">重新识别</button>`);
+    }
+
+    buttons.push(`<button class="guardian-btn" type="button" data-action="video-quick-open-settings">完整设置</button>`);
+    return buttons.join("");
+  }
+
+  private bindVideoQuickCardEvents(primaryAction: VideoQuickCardAction): void {
+    this.miniCard.querySelector<HTMLElement>("[data-action='toggle-video-quick-card']")?.addEventListener("click", () => {
+      this.videoQuickCardCollapsed = !this.videoQuickCardCollapsed;
+      this.renderVideoQuickCard();
+    });
+
+    this.miniCard.querySelector<HTMLElement>("[data-action='video-quick-primary']")?.addEventListener("click", () => {
+      void this.handleVideoQuickAction(primaryAction);
+    });
+
+    this.miniCard.querySelector<HTMLElement>("[data-action='video-quick-run-video']")?.addEventListener("click", () => {
+      void this.handleVideoQuickAction("run-video");
+    });
+
+    this.miniCard.querySelector<HTMLElement>("[data-action='video-quick-open-settings']")?.addEventListener("click", () => {
+      void this.handleVideoQuickAction("open-video-settings");
+    });
+
+    this.miniCard.querySelector<HTMLInputElement>("[data-action='video-quick-toggle-skip']")?.addEventListener("change", (event) => {
+      const enabled = (event.currentTarget as HTMLInputElement).checked;
+      this.callbacks.onToggleCurrentVideoAutoSkip(enabled);
+      this.showEdgeToast(enabled ? "当前视频已允许自动跳过。" : "当前视频已关闭自动跳过。", "success");
+    });
+  }
+
+  private async handleVideoQuickAction(action: VideoQuickCardAction): Promise<void> {
+    switch (action) {
+      case "run-video":
+        this.callbacks.onRunVideoAnalysis();
+        this.showEdgeToast("已开始重新识别当前视频。", "success");
+        return;
+      case "open-service-settings":
+        await this.openAdvancedPanelSection("service");
+        return;
+      case "open-diagnostics":
+        await this.openAdvancedPanelSection("diagnostics");
+        return;
+      case "open-video-settings":
+      default:
+        await this.openPanel("video");
+        return;
+    }
+  }
+
   private renderModal(): void {
     const snapshot = this.capturePanelSnapshot();
     const currentTab = this.panelTab;
@@ -576,37 +779,31 @@ export class ControlCenter {
     this.overlay.classList.toggle("open", this.config.ui.panelOpen);
     this.panel.classList.toggle("open", this.config.ui.panelOpen);
 
-    this.panel.innerHTML = `
-      <div class="guardian-modal-header">
-        <div class="guardian-header-copy">
-          <h2 class="guardian-title">广告跳过与内容过滤</h2>
-          <p class="guardian-subtitle">在首页帮你整理推荐内容，在视频页帮你识别并跳过疑似广告片段。</p>
-        </div>
-        <div class="guardian-header-actions">
-          <button class="guardian-icon-btn" type="button" data-action="toggle-theme" title="${this.config.ui.theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}">
-            ${this.config.ui.theme === "dark" ? "☀" : "☾"}
-          </button>
-          <button class="guardian-icon-btn" type="button" data-action="close-panel" title="关闭窗口">×</button>
-        </div>
+    this.panelHeader.innerHTML = `
+      <div class="guardian-header-copy">
+        <h2 class="guardian-title">广告跳过与内容过滤</h2>
+        <p class="guardian-subtitle">在首页帮你整理推荐内容，在视频页帮你识别并跳过疑似广告片段。</p>
       </div>
-      <div class="guardian-tabs">
-        ${this.renderTabs(currentTab)}
+      <div class="guardian-header-actions">
+        <button class="guardian-icon-btn" type="button" data-action="toggle-theme" title="${this.config.ui.theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}">
+          ${this.config.ui.theme === "dark" ? "☀" : "☾"}
+        </button>
+        <button class="guardian-icon-btn" type="button" data-action="close-panel" title="关闭窗口">×</button>
       </div>
-      <div class="guardian-toast-slot"></div>
-      <div class="guardian-modal-body">
-        ${currentTab === "overview" ? this.renderOverview(persistedServiceReady) : ""}
-        ${currentTab === "feed" ? this.renderFeedTab(formConfig) : ""}
-        ${currentTab === "video" ? this.renderVideoTab(persistedServiceReady, formConfig) : ""}
-        ${currentTab === "advanced" ? this.renderAdvancedTab(diagnostics, draftServiceReady, formConfig, advancedSection) : ""}
-      </div>
-      <div class="guardian-modal-footer">
-        <span>${escapeHtml(this.getSupportFootnote())}</span>
-        <span>按 Esc 或点击空白处可关闭窗口</span>
-      </div>
+    `;
+    this.panelTabs.innerHTML = this.renderTabs(currentTab);
+    this.panelBody.innerHTML = `
+      ${currentTab === "overview" ? this.renderOverview(persistedServiceReady) : ""}
+      ${currentTab === "feed" ? this.renderFeedTab(formConfig) : ""}
+      ${currentTab === "video" ? this.renderVideoTab(persistedServiceReady, formConfig) : ""}
+      ${currentTab === "advanced" ? this.renderAdvancedTab(diagnostics, draftServiceReady, formConfig, advancedSection) : ""}
+    `;
+    this.panelFooter.innerHTML = `
+      <span>${escapeHtml(this.getSupportFootnote())}</span>
+      <span>按 Esc 或点击空白处可关闭窗口</span>
     `;
 
     this.bindPanelEvents();
-    this.renderToast();
     this.restorePanelSnapshot(snapshot);
   }
 
@@ -1184,7 +1381,7 @@ export class ControlCenter {
 
     this.panel.querySelector<HTMLElement>("[data-action='toggle-theme']")?.addEventListener("click", () => {
       void Promise.resolve(this.callbacks.onSetTheme(this.config.ui.theme === "dark" ? "light" : "dark"));
-      this.showToast(this.config.ui.theme === "dark" ? "已切换为浅色模式。" : "已切换为深色模式。", "success");
+      this.showEdgeToast(this.config.ui.theme === "dark" ? "已切换为浅色模式。" : "已切换为深色模式。", "success");
     });
 
     this.panel.querySelector<HTMLElement>("[data-action='close-panel']")?.addEventListener("click", () => {
@@ -1235,26 +1432,26 @@ export class ControlCenter {
     this.panel.querySelectorAll<HTMLElement>("[data-action='run-feed']").forEach((button) => {
       button.addEventListener("click", () => {
         this.callbacks.onRunFeedScan();
-        this.showToast("已开始整理当前页面。", "success");
+        this.showEdgeToast("已开始整理当前页面。", "success");
       });
     });
 
     this.panel.querySelectorAll<HTMLElement>("[data-action='run-video']").forEach((button) => {
       button.addEventListener("click", () => {
         this.callbacks.onRunVideoAnalysis();
-        this.showToast("已开始重新识别当前视频。", "success");
+        this.showEdgeToast("已开始重新识别当前视频。", "success");
       });
     });
 
     this.panel.querySelector<HTMLElement>("[data-action='clear-diagnostics']")?.addEventListener("click", () => {
       this.callbacks.onResetDiagnostics();
-      this.showToast("问题排查记录已清空。", "success");
+      this.showEdgeToast("问题排查记录已清空。", "success");
     });
 
     this.panel.querySelector<HTMLInputElement>("[data-action='toggle-current-skip']")?.addEventListener("change", (event) => {
       const enabled = (event.currentTarget as HTMLInputElement).checked;
       this.callbacks.onToggleCurrentVideoAutoSkip(enabled);
-      this.showToast(enabled ? "当前视频已允许自动跳过。" : "当前视频已关闭自动跳过。", "success");
+      this.showEdgeToast(enabled ? "当前视频已允许自动跳过。" : "当前视频已关闭自动跳过。", "success");
     });
 
     this.panel.querySelector<HTMLElement>("[data-action='save-feed']")?.addEventListener("click", async () => {
@@ -1354,10 +1551,10 @@ export class ControlCenter {
             this.customServiceDraft.model = formConfig.ai.model;
           }
         }
-        this.showToast(this.availableModels.length > 0 ? "已获取可用模型列表。" : "没有获取到模型列表，请检查服务设置。", this.availableModels.length > 0 ? "success" : "warning");
+        this.showEdgeToast(this.availableModels.length > 0 ? "已获取可用模型列表。" : "没有获取到模型列表，请检查服务设置。", this.availableModels.length > 0 ? "success" : "warning");
         this.renderModal();
       } catch (error) {
-        this.showToast(`获取模型失败：${this.formatError(error)}`, "danger");
+        this.showEdgeToast(`获取模型失败：${this.formatError(error)}`, "danger");
       }
     });
   }
@@ -1521,37 +1718,60 @@ export class ControlCenter {
     this.renderModal();
   }
 
-  private renderToast(): void {
-    const slot = this.panel.querySelector<HTMLElement>(".guardian-toast-slot");
-    if (!slot) {
-      return;
-    }
-
-    slot.innerHTML = this.toast
-      ? `<div class="guardian-toast ${this.toast.tone}" role="status" aria-live="polite">${escapeHtml(this.toast.text)}</div>`
-      : "";
-  }
-
   private async persistConfig(patch: DeepPartial<ExtensionConfig>, successMessage: string): Promise<void> {
     try {
       await this.callbacks.onSaveConfig(patch);
-      this.showToast(successMessage, "success");
+      this.showEdgeToast(successMessage, "success");
     } catch (error) {
-      this.showToast(`保存失败：${this.formatError(error)}`, "danger");
+      this.showEdgeToast(`保存失败：${this.formatError(error)}`, "danger");
     }
   }
 
-  private showToast(text: string, tone: ToastTone): void {
-    this.toast = { text, tone };
-    if (this.toastTimer !== null) {
-      window.clearTimeout(this.toastTimer);
+  private renderEdgeToasts(): void {
+    this.toastRegion.innerHTML = this.edgeToasts
+      .map((toast) => `
+        <section class="guardian-edge-toast ${toast.tone}" data-toast-id="${toast.id}" role="status" aria-live="polite">
+          <div class="guardian-edge-toast-copy">${escapeHtml(toast.text)}</div>
+          <div class="guardian-edge-toast-actions">
+            ${toast.actionLabel ? `<button class="guardian-edge-toast-action" type="button" data-action="toast-action" data-toast-id="${toast.id}">${escapeHtml(toast.actionLabel)}</button>` : ""}
+            <button class="guardian-edge-toast-dismiss" type="button" data-action="toast-dismiss" data-toast-id="${toast.id}" aria-label="关闭提示">×</button>
+          </div>
+        </section>
+      `)
+      .join("");
+
+    this.toastRegion.classList.toggle("visible", this.edgeToasts.length > 0);
+
+    this.toastRegion.querySelectorAll<HTMLElement>("[data-action='toast-action']").forEach((button) => {
+      button.addEventListener("click", () => {
+        const toastId = Number(button.dataset.toastId);
+        const toast = this.edgeToasts.find((item) => item.id === toastId);
+        toast?.onAction?.();
+        this.dismissEdgeToast(toastId);
+      });
+    });
+
+    this.toastRegion.querySelectorAll<HTMLElement>("[data-action='toast-dismiss']").forEach((button) => {
+      button.addEventListener("click", () => {
+        this.dismissEdgeToast(Number(button.dataset.toastId));
+      });
+    });
+  }
+
+  private dismissEdgeToast(id: number): void {
+    const timerId = this.toastTimers.get(id);
+    if (timerId !== undefined) {
+      window.clearTimeout(timerId);
+      this.toastTimers.delete(id);
     }
-    this.renderToast();
-    this.toastTimer = window.setTimeout(() => {
-      this.toast = null;
-      this.toastTimer = null;
-      this.renderToast();
-    }, 2600);
+
+    const nextToasts = this.edgeToasts.filter((toast) => toast.id !== id);
+    if (nextToasts.length === this.edgeToasts.length) {
+      return;
+    }
+
+    this.edgeToasts = nextToasts;
+    this.renderEdgeToasts();
   }
 
   private formatError(error: unknown): string {
