@@ -900,11 +900,7 @@ export class ControlCenter {
           <strong>${escapeHtml(highlight.title)}</strong>
           <span>${escapeHtml(highlight.note)}</span>
         </div>
-        <div class="guardian-chip-row">
-          <span class="guardian-chip">${escapeHtml(toScopeLabel(this.runtime.pageScope))}</span>
-          <span class="guardian-chip">${serviceReady ? "识别服务已准备好" : "识别服务还没设置完成"}</span>
-          ${this.runtime.videoBvid ? `<span class="guardian-chip">当前视频已就绪</span>` : ""}
-        </div>
+        ${this.renderOverviewMeta(serviceReady)}
         <div class="guardian-actions">
           <button class="guardian-btn primary" type="button" data-action="run-feed" ${this.runtime.route === "feed" ? "" : "disabled"}>立即整理当前页面</button>
           ${serviceReady
@@ -1170,6 +1166,43 @@ export class ControlCenter {
           </div>
         ` : ""}
       </section>
+    `;
+  }
+
+  private renderOverviewMeta(serviceReady: boolean): string {
+    const items: Array<{ label: string; value: string }> = [
+      {
+        label: "识别服务",
+        value: serviceReady ? "已准备好" : "未完成配置"
+      }
+    ];
+
+    if (this.runtime.route === "feed") {
+      items.unshift({
+        label: "当前范围",
+        value: toScopeLabel(this.runtime.pageScope)
+      });
+    } else if (this.runtime.route === "video") {
+      items.unshift({
+        label: "视频状态",
+        value: this.runtime.videoBvid ? "当前视频已就绪" : "正在等待视频信息"
+      });
+    } else {
+      items.unshift({
+        label: "当前页面",
+        value: "暂未进入支持范围"
+      });
+    }
+
+    return `
+      <div class="guardian-overview-meta">
+        ${items.map((item) => `
+          <div class="guardian-overview-meta-item">
+            <span class="guardian-overview-meta-label">${escapeHtml(item.label)}</span>
+            <span class="guardian-overview-meta-value">${escapeHtml(item.value)}</span>
+          </div>
+        `).join("")}
+      </div>
     `;
   }
 

@@ -611,4 +611,43 @@ describe("ControlCenter advanced settings", () => {
     expect(document.querySelector(".guardian-tab.active")?.textContent).toContain("主页概览");
     expect(onSaveConfig).not.toHaveBeenCalled();
   });
+
+  it("renders contextual overview meta without homepage-scope noise on video pages", () => {
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: true,
+        activeTab: "overview"
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        apiKey: "token"
+      }
+    };
+
+    const runtime = createRuntime();
+    runtime.route = "video";
+    runtime.videoBvid = "BV1meta";
+    runtime.videoPhase = "ready";
+
+    const controlCenter = new ControlCenter(config, runtime, {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig: vi.fn().mockResolvedValue(undefined),
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    const items = Array.from(document.querySelectorAll(".guardian-overview-meta-item")).map((element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "");
+    expect(items).toContain("视频状态 当前视频已就绪");
+    expect(items).toContain("识别服务 已准备好");
+    expect(document.querySelector(".guardian-overview-meta")?.textContent).not.toContain("当前页面暂不在首页整理范围内");
+  });
 });

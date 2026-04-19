@@ -684,18 +684,33 @@ export function createStyles(): string {
       color: var(--guardian-danger);
     }
 
-    .guardian-chip-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
+    .guardian-overview-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
     }
 
-    .guardian-chip {
-      border-radius: 999px;
-      padding: 6px 10px;
-      background: var(--guardian-tag);
+    .guardian-overview-meta-item {
+      display: grid;
+      gap: 6px;
+      padding: 12px 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--guardian-border);
+      box-shadow: inset 0 0 0 1px rgba(15, 155, 215, 0.06);
+    }
+
+    .guardian-overview-meta-label {
+      color: var(--guardian-muted);
       font-size: 12px;
-      color: var(--guardian-primary-strong);
+      line-height: 1.5;
+    }
+
+    .guardian-overview-meta-value {
+      color: var(--guardian-text);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.6;
     }
 
     .guardian-stack,
@@ -1167,6 +1182,7 @@ export function createStyles(): string {
 
       .guardian-state-grid,
       .guardian-grid-2,
+      .guardian-overview-meta,
       .guardian-choice-grid,
       .guardian-result-grid {
         grid-template-columns: 1fr;
