@@ -54,6 +54,7 @@ export class VideoGuard {
   private activeSkipListener: ((event: Event) => void) | null = null;
   private skippedForCurrentRange = false;
   private latestResult: VideoAnalysisResult | null = null;
+  private activeRunRevision = 0;
 
   constructor(private readonly app: VideoGuardApp) {}
 
@@ -108,6 +109,7 @@ export class VideoGuard {
   }
 
   async unmount(): Promise<void> {
+    this.activeRunRevision += 1;
     if (this.currentRequestId) {
       await this.app.cancelVideoAnalysis(this.currentRequestId);
       this.currentRequestId = null;
@@ -129,20 +131,28 @@ export class VideoGuard {
       return;
     }
 
+    const runRevision = this.activeRunRevision + 1;
+    this.activeRunRevision = runRevision;
+
     if (this.currentRequestId) {
       await this.app.cancelVideoAnalysis(this.currentRequestId);
     }
 
+    const requestId = `${this.currentBvid}-${Date.now()}`;
+    this.currentRequestId = requestId;
     this.app.setCurrentVideoState({
       phase: "collecting",
+      bvid: this.currentBvid,
       error: null,
       result: null,
       errorDetails: null
     });
 
     const topComment = await collectTopComment();
-    const requestId = `${this.currentBvid}-${Date.now()}`;
-    this.currentRequestId = requestId;
+    if (runRevision !== this.activeRunRevision || requestId !== this.currentRequestId) {
+      return;
+    }
+
     this.app.setCurrentVideoState({
       phase: "analyzing"
     });
@@ -154,6 +164,10 @@ export class VideoGuard {
         force,
         requestId
       });
+      if (runRevision !== this.activeRunRevision || requestId !== this.currentRequestId) {
+        return;
+      }
+
       this.latestResult = result;
       this.app.setCurrentVideoState({
         phase: result.cacheHit ? "cached" : "ready",
@@ -164,6 +178,10 @@ export class VideoGuard {
       this.armSkipIfNeeded(result);
       this.app.log(`VideoGuard 完成分析 ${this.currentBvid}`);
     } catch (error) {
+      if (runRevision !== this.activeRunRevision || requestId !== this.currentRequestId) {
+        return;
+      }
+
       const details = getVideoAnalysisErrorDetails(error);
       const message = error instanceof Error ? error.message : String(error);
       this.app.setCurrentVideoState({
@@ -177,7 +195,9 @@ export class VideoGuard {
         this.app.logVideoDiagnostic(details);
       }
     } finally {
-      this.currentRequestId = null;
+      if (runRevision === this.activeRunRevision && requestId === this.currentRequestId) {
+        this.currentRequestId = null;
+      }
     }
   }
 
