@@ -1182,43 +1182,6 @@ export class ControlCenter {
     `;
   }
 
-  private renderOverviewMeta(serviceReady: boolean): string {
-    const items: Array<{ label: string; value: string }> = [
-      {
-        label: "识别服务",
-        value: serviceReady ? "已准备好" : "未完成配置"
-      }
-    ];
-
-    if (this.runtime.route === "feed") {
-      items.unshift({
-        label: "当前范围",
-        value: toScopeLabel(this.runtime.pageScope)
-      });
-    } else if (this.runtime.route === "video") {
-      items.unshift({
-        label: "视频状态",
-        value: this.runtime.videoBvid ? "当前视频已就绪" : "正在等待视频信息"
-      });
-    } else {
-      items.unshift({
-        label: "当前页面",
-        value: "暂未进入支持范围"
-      });
-    }
-
-    return `
-      <div class="guardian-overview-meta">
-        ${items.map((item) => `
-          <div class="guardian-overview-meta-item">
-            <span class="guardian-overview-meta-label">${escapeHtml(item.label)}</span>
-            <span class="guardian-overview-meta-value">${escapeHtml(item.value)}</span>
-          </div>
-        `).join("")}
-      </div>
-    `;
-  }
-
   private renderSwitchField(
     field: string,
     label: string,
@@ -1253,6 +1216,43 @@ export class ControlCenter {
         <input type="checkbox" ${attribute} ${checked ? "checked" : ""}>
         <span>${escapeHtml(label)}</span>
       </label>
+    `;
+  }
+
+  private renderOverviewMeta(serviceReady: boolean): string {
+    const items: Array<{ label: string; value: string }> = [
+      {
+        label: "识别服务",
+        value: serviceReady ? "已准备好" : "未完成配置"
+      }
+    ];
+
+    if (this.runtime.route === "feed") {
+      items.unshift({
+        label: "当前范围",
+        value: toScopeLabel(this.runtime.pageScope)
+      });
+    } else if (this.runtime.route === "video") {
+      items.unshift({
+        label: "视频状态",
+        value: this.runtime.videoBvid ? "当前视频已就绪" : "正在等待视频信息"
+      });
+    } else {
+      items.unshift({
+        label: "当前页面",
+        value: "暂未进入支持范围"
+      });
+    }
+
+    return `
+      <div class="guardian-overview-meta">
+        ${items.map((item) => `
+          <div class="guardian-overview-meta-item">
+            <span class="guardian-overview-meta-label">${escapeHtml(item.label)}</span>
+            <span class="guardian-overview-meta-value">${escapeHtml(item.value)}</span>
+          </div>
+        `).join("")}
+      </div>
     `;
   }
 

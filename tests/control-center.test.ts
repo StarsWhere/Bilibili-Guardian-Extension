@@ -393,7 +393,6 @@ describe("ControlCenter advanced settings", () => {
     expect(onToggleCurrentVideoAutoSkip).toHaveBeenCalledWith(false);
   });
 
-  it("resets the video quick card expansion state when switching to a new video", async () => {
   it("shows the collecting state without reusing the previous result and disables rerun actions", () => {
     const config: ExtensionConfig = {
       ...DEFAULT_CONFIG,
