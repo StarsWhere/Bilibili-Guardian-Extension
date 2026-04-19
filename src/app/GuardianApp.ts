@@ -4,7 +4,7 @@ import { RouteManager } from "@/content/router";
 import { ControlCenter, type GuardianRuntimeState } from "@/content/ui/ControlCenter";
 import type { GuardianPlatformServices } from "@/shared/platform";
 import type { RouteModule } from "@/shared/router";
-import type { DeepPartial, ExtensionConfig, PanelTabId } from "@/shared/types";
+import type { DeepPartial, ExtensionConfig, PanelTabId, VideoAnalysisErrorDetails } from "@/shared/types";
 import { classifyFeedPage, isVideoPage } from "@/shared/url";
 
 export class GuardianApp {
@@ -18,6 +18,7 @@ export class GuardianApp {
     videoPhase: "idle",
     videoError: null,
     videoResult: null,
+    videoErrorDetails: null,
     currentVideoAutoSkip: false,
     diagnostics: []
   };
@@ -68,9 +69,11 @@ export class GuardianApp {
         this.runtime.videoPhase = patch.phase ?? this.runtime.videoPhase;
         this.runtime.videoError = patch.error ?? this.runtime.videoError;
         this.runtime.videoResult = patch.result ?? this.runtime.videoResult;
+        this.runtime.videoErrorDetails = patch.errorDetails ?? this.runtime.videoErrorDetails;
         this.render();
       },
       log: (message) => this.log(message),
+      logVideoDiagnostic: (details) => this.logVideoDiagnostic(details),
       getCachedVideoResult: (bvid) => this.services.getCachedVideoResult(bvid),
       analyzeVideo: (payload) => this.services.analyzeVideo(payload),
       cancelVideoAnalysis: async (requestId) => {
@@ -94,6 +97,7 @@ export class GuardianApp {
           this.runtime.videoPhase = "idle";
           this.runtime.videoError = null;
           this.runtime.videoResult = null;
+          this.runtime.videoErrorDetails = null;
           this.runtime.videoBvid = null;
           this.render();
         }
@@ -135,6 +139,7 @@ export class GuardianApp {
         },
         onResetDiagnostics: () => {
           this.runtime.diagnostics = [];
+          this.runtime.videoErrorDetails = null;
           this.render();
         },
         onMoveButton: (nextPosition) => void this.saveConfig({ ui: { ...this.config.ui, floatingButtonPosition: nextPosition } })
@@ -174,6 +179,15 @@ export class GuardianApp {
     const stamped = `[${new Date().toLocaleTimeString()}] ${message}`;
     this.runtime.diagnostics = [stamped, ...this.runtime.diagnostics].slice(0, 40);
     this.render();
+  }
+
+  logVideoDiagnostic(details: VideoAnalysisErrorDetails): void {
+    this.log(`视频诊断：${details.provider} / ${details.model} / ${details.code} / ${details.responseSource}`);
+
+    if (details.responsePreview) {
+      const compactPreview = details.responsePreview.replace(/\s+/g, " ").trim();
+      this.log(`AI 返回预览：${compactPreview}`);
+    }
   }
 
   private async saveConfig(patch: DeepPartial<ExtensionConfig>): Promise<void> {

@@ -699,9 +699,10 @@ export function createStyles(): string {
     }
 
     .guardian-actions {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 10px;
-      flex-wrap: wrap;
+      width: 100%;
     }
 
     .guardian-btn {
@@ -713,6 +714,10 @@ export function createStyles(): string {
       cursor: pointer;
       font-size: 13px;
       font-weight: 800;
+      width: 100%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       transition:
         transform 160ms ease,
         background 160ms ease,
@@ -837,6 +842,49 @@ export function createStyles(): string {
       line-height: 1.6;
       white-space: pre-wrap;
       color: var(--guardian-text);
+    }
+
+    .guardian-diagnostics-preview {
+      max-height: 180px;
+    }
+
+    .guardian-diagnostic-detail {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--guardian-border);
+      background: rgba(255, 255, 255, 0.28);
+    }
+
+    body[data-guardian-theme="dark"] .guardian-diagnostic-detail {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .guardian-diagnostic-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .guardian-diagnostic-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      font-size: 12px;
+      color: var(--guardian-muted);
+    }
+
+    .guardian-diagnostic-message {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(231, 76, 60, 0.08);
+      color: var(--guardian-danger);
+      font-size: 12px;
+      line-height: 1.7;
+      font-weight: 700;
     }
 
     .guardian-details {

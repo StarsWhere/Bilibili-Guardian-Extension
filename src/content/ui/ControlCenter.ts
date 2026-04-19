@@ -4,6 +4,9 @@ import type {
   ExtensionConfig,
   FeedPageScope,
   PanelTabId,
+  VideoAnalysisErrorDetails,
+  VideoAnalysisFailureCode,
+  VideoAnalysisFailureStage,
   VideoAnalysisResult,
   VideoAnalysisPhase
 } from "@/shared/types";
@@ -19,6 +22,7 @@ export interface GuardianRuntimeState {
   videoPhase: VideoAnalysisPhase;
   videoError: string | null;
   videoResult: VideoAnalysisResult | null;
+  videoErrorDetails: VideoAnalysisErrorDetails | null;
   currentVideoAutoSkip: boolean;
   diagnostics: string[];
 }
@@ -38,6 +42,12 @@ interface ControlCenterCallbacks {
 
 type DisplayTabId = "overview" | "feed" | "video" | "advanced";
 type ToastTone = "info" | "success" | "warning" | "danger";
+type AdvancedSectionId = "service" | "preferences" | "diagnostics";
+
+interface PanelSnapshot {
+  focusSelector: string | null;
+  scrollTop: number;
+}
 
 function linesToList(value: string): string[] {
   return value
@@ -130,6 +140,32 @@ export function toProviderLabel(provider: ExtensionConfig["ai"]["provider"]): st
   }
 }
 
+function toFailureStageLabel(stage: VideoAnalysisFailureStage): string {
+  switch (stage) {
+    case "response_parse":
+      return "响应解析";
+    default:
+      return stage;
+  }
+}
+
+function toFailureCodeLabel(code: VideoAnalysisFailureCode): string {
+  switch (code) {
+    case "empty_response":
+      return "空响应";
+    case "completed_without_output":
+      return "完成但无输出";
+    case "no_json_found":
+      return "未找到 JSON";
+    case "invalid_json":
+      return "JSON 语法错误";
+    case "invalid_result_shape":
+      return "字段结构异常";
+    default:
+      return code;
+  }
+}
+
 export function hasConfiguredRecognitionService(config: ExtensionConfig): boolean {
   const hasBaseUrl = config.ai.baseUrl.trim().length > 0;
   const hasModel = config.ai.model.trim().length > 0;
@@ -140,6 +176,21 @@ export function hasConfiguredRecognitionService(config: ExtensionConfig): boolea
   }
 
   return hasBaseUrl && hasModel && hasKey;
+}
+
+export function shouldAutoPickFetchedModel(
+  provider: ExtensionConfig["ai"]["provider"],
+  model: string
+): boolean {
+  if (!model.trim()) {
+    return true;
+  }
+
+  if (provider === "custom") {
+    return false;
+  }
+
+  return AI_PROVIDER_DEFAULTS[provider].models.includes(model);
 }
 
 function getVideoSummary(result: VideoAnalysisResult | null, error: string | null): string {
@@ -163,6 +214,10 @@ export class ControlCenter {
   private config: ExtensionConfig;
   private runtime: GuardianRuntimeState;
   private availableModels: string[] = [];
+  private draftConfig: ExtensionConfig | null = null;
+  private expandedAdvancedSection: AdvancedSectionId = "service";
+  private pendingAdvancedSection: AdvancedSectionId | null = null;
+  private customServiceDraft = { baseUrl: "", model: "" };
   private isOpen = false;
   private restoreFocusTarget: HTMLElement | null = null;
   private previousBodyOverflow = "";
@@ -227,6 +282,14 @@ export class ControlCenter {
 
     this.panel.addEventListener("mousedown", (event) => {
       event.stopPropagation();
+    });
+
+    this.panel.addEventListener("input", (event) => {
+      this.handleFormMutation(event);
+    });
+
+    this.panel.addEventListener("change", (event) => {
+      this.handleFormMutation(event);
     });
 
     document.addEventListener("keydown", (event) => {
@@ -305,9 +368,111 @@ export class ControlCenter {
     });
   }
 
+  private resetDraftConfig(): void {
+    this.draftConfig = structuredClone(this.config);
+    if (this.draftConfig.ai.provider === "custom") {
+      this.customServiceDraft = {
+        baseUrl: this.draftConfig.ai.baseUrl,
+        model: this.draftConfig.ai.model
+      };
+    }
+  }
+
+  private getFormConfig(): ExtensionConfig {
+    if (!this.draftConfig) {
+      this.resetDraftConfig();
+    }
+
+    return this.draftConfig as ExtensionConfig;
+  }
+
+  private getAdvancedSection(serviceReady: boolean): AdvancedSectionId {
+    if (this.pendingAdvancedSection) {
+      const next = this.pendingAdvancedSection;
+      this.expandedAdvancedSection = next;
+      this.pendingAdvancedSection = null;
+      return next;
+    }
+
+    if (!serviceReady && !this.pendingAdvancedSection && normalizeTab(this.config.ui.activeTab) === "advanced") {
+      return this.expandedAdvancedSection || "service";
+    }
+
+    return this.expandedAdvancedSection || "service";
+  }
+
+  private capturePanelSnapshot(): PanelSnapshot | null {
+    if (!this.config.ui.panelOpen) {
+      return null;
+    }
+
+    const activeElement = document.activeElement as HTMLElement | null;
+    const focusSelector = activeElement ? this.getFocusableSelector(activeElement) : null;
+    const body = this.panel.querySelector<HTMLElement>(".guardian-modal-body");
+
+    return {
+      focusSelector,
+      scrollTop: body?.scrollTop ?? 0
+    };
+  }
+
+  private restorePanelSnapshot(snapshot: PanelSnapshot | null): void {
+    if (!snapshot) {
+      return;
+    }
+
+    const body = this.panel.querySelector<HTMLElement>(".guardian-modal-body");
+    if (body) {
+      body.scrollTop = snapshot.scrollTop;
+    }
+
+    if (snapshot.focusSelector) {
+      this.panel.querySelector<HTMLElement>(snapshot.focusSelector)?.focus();
+    }
+  }
+
+  private getFocusableSelector(element: HTMLElement): string | null {
+    if (!this.panel.contains(element)) {
+      return null;
+    }
+
+    if (element.dataset.field) {
+      return `[data-field="${element.dataset.field}"]`;
+    }
+
+    if (element.dataset.action) {
+      return `[data-action="${element.dataset.action}"]`;
+    }
+
+    if (element.dataset.tab) {
+      return `[data-tab="${element.dataset.tab}"]`;
+    }
+
+    if (element.dataset.section) {
+      return `[data-section="${element.dataset.section}"]`;
+    }
+
+    return null;
+  }
+
+  private openAdvancedSection(section: AdvancedSectionId): void {
+    this.pendingAdvancedSection = section;
+    if (normalizeTab(this.config.ui.activeTab) !== "advanced") {
+      this.callbacks.onSetTab("advanced");
+      return;
+    }
+
+    this.expandedAdvancedSection = section;
+    this.renderModal();
+  }
+
   private render(): void {
     const wasOpen = this.isOpen;
     const isOpen = this.config.ui.panelOpen;
+
+    if (!wasOpen && isOpen) {
+      this.resetDraftConfig();
+    }
 
     document.body.dataset.guardianTheme = this.config.ui.theme;
     this.renderButton();
@@ -317,6 +482,8 @@ export class ControlCenter {
     if (!wasOpen && isOpen) {
       this.handleOpen();
     } else if (wasOpen && !isOpen) {
+      this.draftConfig = null;
+      this.pendingAdvancedSection = null;
       this.handleClose();
     }
   }
@@ -380,9 +547,13 @@ export class ControlCenter {
   }
 
   private renderModal(): void {
+    const snapshot = this.capturePanelSnapshot();
     const currentTab = normalizeTab(this.config.ui.activeTab);
     const diagnostics = this.runtime.diagnostics.length > 0 ? this.runtime.diagnostics.join("\n") : "暂时还没有问题排查记录。";
-    const serviceReady = hasConfiguredRecognitionService(this.config);
+    const persistedServiceReady = hasConfiguredRecognitionService(this.config);
+    const formConfig = this.getFormConfig();
+    const draftServiceReady = hasConfiguredRecognitionService(formConfig);
+    const advancedSection = this.getAdvancedSection(draftServiceReady);
 
     this.overlay.classList.toggle("open", this.config.ui.panelOpen);
     this.panel.classList.toggle("open", this.config.ui.panelOpen);
@@ -403,12 +574,12 @@ export class ControlCenter {
       <div class="guardian-tabs">
         ${this.renderTabs(currentTab)}
       </div>
-      ${this.toast ? `<div class="guardian-toast ${this.toast.tone}" role="status" aria-live="polite">${escapeHtml(this.toast.text)}</div>` : ""}
+      <div class="guardian-toast-slot"></div>
       <div class="guardian-modal-body">
-        ${currentTab === "overview" ? this.renderOverview(serviceReady) : ""}
-        ${currentTab === "feed" ? this.renderFeedTab() : ""}
-        ${currentTab === "video" ? this.renderVideoTab(serviceReady) : ""}
-        ${currentTab === "advanced" ? this.renderAdvancedTab(diagnostics, serviceReady) : ""}
+        ${currentTab === "overview" ? this.renderOverview(persistedServiceReady) : ""}
+        ${currentTab === "feed" ? this.renderFeedTab(formConfig) : ""}
+        ${currentTab === "video" ? this.renderVideoTab(persistedServiceReady, formConfig) : ""}
+        ${currentTab === "advanced" ? this.renderAdvancedTab(diagnostics, draftServiceReady, formConfig, advancedSection) : ""}
       </div>
       <div class="guardian-modal-footer">
         <span>${escapeHtml(this.getSupportFootnote())}</span>
@@ -417,6 +588,8 @@ export class ControlCenter {
     `;
 
     this.bindPanelEvents();
+    this.renderToast();
+    this.restorePanelSnapshot(snapshot);
   }
 
   private renderTabs(currentTab: DisplayTabId): string {
@@ -453,7 +626,7 @@ export class ControlCenter {
           </div>
           <div class="guardian-actions">
             <button class="guardian-btn primary" type="button" data-action="dismiss-onboarding">知道了</button>
-            <button class="guardian-btn" type="button" data-action="goto-advanced">去看看高级设置</button>
+            <button class="guardian-btn" type="button" data-action="goto-advanced-service">去看看高级设置</button>
           </div>
         </section>
       ` : ""}
@@ -495,13 +668,13 @@ export class ControlCenter {
           <button class="guardian-btn primary" type="button" data-action="run-feed" ${this.runtime.route === "feed" ? "" : "disabled"}>立即整理当前页面</button>
           ${serviceReady
             ? `<button class="guardian-btn" type="button" data-action="run-video" ${this.runtime.route === "video" ? "" : "disabled"}>重新识别当前视频</button>`
-            : `<button class="guardian-btn" type="button" data-action="goto-advanced">去完成识别服务设置</button>`}
+            : `<button class="guardian-btn" type="button" data-action="goto-advanced-service">去完成识别服务设置</button>`}
         </div>
       </section>
     `;
   }
 
-  private renderFeedTab(): string {
+  private renderFeedTab(formConfig: ExtensionConfig): string {
     return `
       <section class="guardian-card">
         <div class="guardian-section-head">
@@ -512,10 +685,10 @@ export class ControlCenter {
           <span class="guardian-soft-badge">${escapeHtml(toScopeLabel(this.runtime.pageScope))}</span>
         </div>
         <div class="guardian-stack">
-          ${this.renderSwitchField("feed.enabled", "启用首页过滤", "进入支持页面后自动整理推荐内容。", this.config.feed.enabled)}
-          ${this.renderSwitchField("feed.blockAds", "隐藏广告与推广内容", "优先移除明显推广卡片和广告位。", this.config.feed.blockAds)}
-          ${this.renderSwitchField("feed.blockLive", "隐藏直播推荐", "减少直播内容对首页和搜索结果的打扰。", this.config.feed.blockLive)}
-          ${this.renderSwitchField("feed.continuousScan", "自动跟随新内容继续整理", "页面动态加载新卡片时，继续保持整理效果。", this.config.feed.continuousScan)}
+          ${this.renderSwitchField("feed.enabled", "启用首页过滤", "进入支持页面后自动整理推荐内容。", formConfig.feed.enabled)}
+          ${this.renderSwitchField("feed.blockAds", "隐藏广告与推广内容", "优先移除明显推广卡片和广告位。", formConfig.feed.blockAds)}
+          ${this.renderSwitchField("feed.blockLive", "隐藏直播推荐", "减少直播内容对首页和搜索结果的打扰。", formConfig.feed.blockLive)}
+          ${this.renderSwitchField("feed.continuousScan", "自动跟随新内容继续整理", "页面动态加载新卡片时，继续保持整理效果。", formConfig.feed.continuousScan)}
         </div>
         <div class="guardian-subsection">
           <div class="guardian-label">在哪些页面生效</div>
@@ -526,15 +699,15 @@ export class ControlCenter {
               { id: "popular", label: "热门页" },
               { id: "ranking", label: "排行榜" },
               { id: "channel", label: "分区与频道页" }
-            ] as const).map((scope) => this.renderChoiceItem(scope.label, `data-scope="${scope.id}"`, this.config.feed.scopes.includes(scope.id))).join("")}
+            ] as const).map((scope) => this.renderChoiceItem(scope.label, `data-scope="${scope.id}"`, formConfig.feed.scopes.includes(scope.id))).join("")}
           </div>
         </div>
         <div class="guardian-grid-2">
           <label class="guardian-label">不想看到的分类
-            <textarea class="guardian-textarea" data-field="feed.categoryBlacklist" placeholder="每行填写一个分类名称">${escapeHtml(listToLines(this.config.feed.categoryBlacklist))}</textarea>
+            <textarea class="guardian-textarea" data-field="feed.categoryBlacklist" placeholder="每行填写一个分类名称">${escapeHtml(listToLines(formConfig.feed.categoryBlacklist))}</textarea>
           </label>
           <label class="guardian-label">不想看到的关键词
-            <textarea class="guardian-textarea" data-field="feed.keywordBlacklist" placeholder="每行填写一个关键词，可用于标题或 UP 主">${escapeHtml(listToLines(this.config.feed.keywordBlacklist))}</textarea>
+            <textarea class="guardian-textarea" data-field="feed.keywordBlacklist" placeholder="每行填写一个关键词，可用于标题或 UP 主">${escapeHtml(listToLines(formConfig.feed.keywordBlacklist))}</textarea>
           </label>
         </div>
         <div class="guardian-actions">
@@ -545,7 +718,7 @@ export class ControlCenter {
     `;
   }
 
-  private renderVideoTab(serviceReady: boolean): string {
+  private renderVideoTab(serviceReady: boolean, formConfig: ExtensionConfig): string {
     const status = this.getVideoStatusView();
 
     return `
@@ -558,16 +731,16 @@ export class ControlCenter {
           <span class="guardian-soft-badge">${serviceReady ? "识别服务已连接" : "还没完成识别服务设置"}</span>
         </div>
         <div class="guardian-stack">
-          ${this.renderSwitchField("video.enabled", "启用视频跳过", "进入视频页后自动尝试识别。", this.config.video.enabled)}
-          ${this.renderSwitchField("video.defaultAutoSkip", "识别后默认自动跳过", "适合希望减少手动操作的日常使用。", this.config.video.defaultAutoSkip)}
+          ${this.renderSwitchField("video.enabled", "启用视频跳过", "进入视频页后自动尝试识别。", formConfig.video.enabled)}
+          ${this.renderSwitchField("video.defaultAutoSkip", "识别后默认自动跳过", "适合希望减少手动操作的日常使用。", formConfig.video.defaultAutoSkip)}
           ${this.renderSwitchField("toggle-current-skip", "当前这个视频允许自动跳过", this.runtime.videoBvid ? "你可以临时关闭当前视频的自动跳过。" : "打开视频后，这里会显示当前视频专属开关。", this.runtime.currentVideoAutoSkip, true, !this.runtime.videoBvid)}
         </div>
         <div class="guardian-grid-2">
           <label class="guardian-label">识别灵敏度
-            <input class="guardian-field" data-field="video.probabilityThreshold" type="number" min="0" max="100" value="${this.config.video.probabilityThreshold}">
+            <input class="guardian-field" data-field="video.probabilityThreshold" type="number" min="0" max="100" value="${formConfig.video.probabilityThreshold}">
           </label>
           <label class="guardian-label">结果保存时长（分钟）
-            <input class="guardian-field" data-field="video.cacheTtlMinutes" type="number" min="1" value="${this.config.video.cacheTtlMinutes}">
+            <input class="guardian-field" data-field="video.cacheTtlMinutes" type="number" min="1" value="${formConfig.video.cacheTtlMinutes}">
           </label>
         </div>
         <div class="guardian-result-card">
@@ -591,13 +764,20 @@ export class ControlCenter {
           <button class="guardian-btn primary" type="button" data-action="save-video">保存视频跳过设置</button>
           ${serviceReady
             ? `<button class="guardian-btn" type="button" data-action="run-video" ${this.runtime.route === "video" ? "" : "disabled"}>重新识别当前视频</button>`
-            : `<button class="guardian-btn" type="button" data-action="goto-advanced">去完成识别服务设置</button>`}
+            : `<button class="guardian-btn" type="button" data-action="goto-advanced-service">去完成识别服务设置</button>`}
         </div>
       </section>
     `;
   }
 
-  private renderAdvancedTab(diagnostics: string, serviceReady: boolean): string {
+  private renderAdvancedTab(
+    diagnostics: string,
+    serviceReady: boolean,
+    formConfig: ExtensionConfig,
+    advancedSection: AdvancedSectionId
+  ): string {
+    const selectedModel = this.availableModels.includes(formConfig.ai.model) ? formConfig.ai.model : "";
+
     return `
       <section class="guardian-card">
         <div class="guardian-section-head">
@@ -608,74 +788,75 @@ export class ControlCenter {
           <span class="guardian-soft-badge">${serviceReady ? "已具备识别条件" : "建议先补全识别服务"}</span>
         </div>
 
-        <details class="guardian-details">
-          <summary>识别服务设置</summary>
+        <details class="guardian-details" data-section="service" ${advancedSection === "service" ? "open" : ""}>
+          <summary data-action="open-advanced-section" data-section="service">识别服务设置</summary>
           <div class="guardian-details-body">
             <div class="guardian-grid-2">
               <label class="guardian-label">识别服务
                 <select class="guardian-select" data-field="ai.provider">
-                  ${Object.entries(AI_PROVIDER_DEFAULTS).map(([provider]) => `<option value="${provider}" ${this.config.ai.provider === provider ? "selected" : ""}>${escapeHtml(toProviderLabel(provider as ExtensionConfig["ai"]["provider"]))}</option>`).join("")}
+                  ${Object.entries(AI_PROVIDER_DEFAULTS).map(([provider]) => `<option value="${provider}" ${formConfig.ai.provider === provider ? "selected" : ""}>${escapeHtml(toProviderLabel(provider as ExtensionConfig["ai"]["provider"]))}</option>`).join("")}
                 </select>
               </label>
-              <label class="guardian-label">模型名称
-                <input class="guardian-field" data-field="ai.model" placeholder="例如：gpt-4o-mini" value="${escapeHtml(this.config.ai.model)}">
+              <label class="guardian-label">从已获取模型中选择
+                <select class="guardian-select" data-action="select-model-option" ${this.availableModels.length > 0 ? "" : "disabled"}>
+                  <option value="">${this.availableModels.length > 0 ? "请选择一个模型" : "请先获取模型列表"}</option>
+                  ${this.availableModels.map((model) => `<option value="${escapeHtml(model)}" ${selectedModel === model ? "selected" : ""}>${escapeHtml(model)}</option>`).join("")}
+                </select>
               </label>
             </div>
+            <label class="guardian-label">模型名称
+              <input class="guardian-field" data-field="ai.model" placeholder="例如：gpt-4o-mini" value="${escapeHtml(formConfig.ai.model)}">
+            </label>
             <label class="guardian-label">接口地址
-              <input class="guardian-field" data-field="ai.baseUrl" placeholder="例如：https://api.openai.com/v1" value="${escapeHtml(this.config.ai.baseUrl)}">
+              <input class="guardian-field" data-field="ai.baseUrl" placeholder="例如：https://api.openai.com/v1" value="${escapeHtml(formConfig.ai.baseUrl)}">
             </label>
             <label class="guardian-label">访问密钥
-              <input class="guardian-field" data-field="ai.apiKey" type="password" placeholder="请输入你的服务密钥" value="${escapeHtml(this.config.ai.apiKey)}">
+              <input class="guardian-field" data-field="ai.apiKey" type="password" placeholder="请输入你的服务密钥" value="${escapeHtml(formConfig.ai.apiKey)}">
             </label>
             <div class="guardian-actions">
               <button class="guardian-btn primary" type="button" data-action="save-service">保存识别服务设置</button>
               <button class="guardian-btn" type="button" data-action="fetch-models">获取可用模型</button>
             </div>
-            ${this.availableModels.length > 0 ? `
-              <div class="guardian-subsection">
-                <div class="guardian-label">当前获取到的模型</div>
-                <div class="guardian-chip-row">
-                  ${this.availableModels.map((model) => `<span class="guardian-chip">${escapeHtml(model)}</span>`).join("")}
-                </div>
-              </div>
-            ` : `
-              <div class="guardian-empty">还没有获取到可用模型列表，需要时可以点击上方按钮尝试获取。</div>
-            `}
+            <div class="guardian-empty">
+              ${this.availableModels.length > 0
+                ? `已获取 ${this.availableModels.length} 个模型，你可以直接从上面的下拉框里选择，也可以继续手动输入自定义模型。`
+                : "还没有获取到可用模型列表，需要时可以点击上方按钮尝试获取。"}
+            </div>
           </div>
         </details>
 
-        <details class="guardian-details">
-          <summary>识别偏好</summary>
+        <details class="guardian-details" data-section="preferences" ${advancedSection === "preferences" ? "open" : ""}>
+          <summary data-action="open-advanced-section" data-section="preferences">识别偏好</summary>
           <div class="guardian-details-body">
             <label class="guardian-label">识别说明词
-              <textarea class="guardian-textarea guardian-textarea-lg" data-field="ai.prompt" placeholder="这里适合熟悉后再修改">${escapeHtml(this.config.ai.prompt)}</textarea>
+              <textarea class="guardian-textarea guardian-textarea-lg" data-field="ai.prompt" placeholder="这里适合熟悉后再修改">${escapeHtml(formConfig.ai.prompt)}</textarea>
             </label>
             <div class="guardian-grid-2">
               <label class="guardian-label">优先参考词
-                <textarea class="guardian-textarea" data-field="ai.whitelist" placeholder="每行填写一个词">${escapeHtml(listToLines(this.config.ai.whitelist))}</textarea>
+                <textarea class="guardian-textarea" data-field="ai.whitelist" placeholder="每行填写一个词">${escapeHtml(listToLines(formConfig.ai.whitelist))}</textarea>
               </label>
               <label class="guardian-label">忽略参考词
-                <textarea class="guardian-textarea" data-field="ai.blacklist" placeholder="每行填写一个词">${escapeHtml(listToLines(this.config.ai.blacklist))}</textarea>
+                <textarea class="guardian-textarea" data-field="ai.blacklist" placeholder="每行填写一个词">${escapeHtml(listToLines(formConfig.ai.blacklist))}</textarea>
               </label>
             </div>
             <div class="guardian-choice-grid">
-              ${this.renderChoiceItem("启用优先参考词", 'data-field="ai.whitelistEnabled"', this.config.ai.whitelistEnabled)}
-              ${this.renderChoiceItem("优先参考词使用正则", 'data-field="ai.whitelistRegex"', this.config.ai.whitelistRegex)}
-              ${this.renderChoiceItem("启用忽略参考词", 'data-field="ai.blacklistEnabled"', this.config.ai.blacklistEnabled)}
-              ${this.renderChoiceItem("忽略参考词使用正则", 'data-field="ai.blacklistRegex"', this.config.ai.blacklistRegex)}
+              ${this.renderChoiceItem("启用优先参考词", 'data-field="ai.whitelistEnabled"', formConfig.ai.whitelistEnabled)}
+              ${this.renderChoiceItem("优先参考词使用正则", 'data-field="ai.whitelistRegex"', formConfig.ai.whitelistRegex)}
+              ${this.renderChoiceItem("启用忽略参考词", 'data-field="ai.blacklistEnabled"', formConfig.ai.blacklistEnabled)}
+              ${this.renderChoiceItem("忽略参考词使用正则", 'data-field="ai.blacklistRegex"', formConfig.ai.blacklistRegex)}
             </div>
             <div class="guardian-grid-2">
               <label class="guardian-label">长内容修正
-                <input class="guardian-field" data-field="video.durationPenalty" type="number" min="0" value="${this.config.video.durationPenalty}">
+                <input class="guardian-field" data-field="video.durationPenalty" type="number" min="0" value="${formConfig.video.durationPenalty}">
               </label>
               <label class="guardian-label">最少参考弹幕数
-                <input class="guardian-field" data-field="video.minDanmakuForAnalysis" type="number" min="1" value="${this.config.video.minDanmakuForAnalysis}">
+                <input class="guardian-field" data-field="video.minDanmakuForAnalysis" type="number" min="1" value="${formConfig.video.minDanmakuForAnalysis}">
               </label>
               <label class="guardian-label">最短片段时长（秒）
-                <input class="guardian-field" data-field="video.minAdDuration" type="number" min="1" value="${this.config.video.minAdDuration}">
+                <input class="guardian-field" data-field="video.minAdDuration" type="number" min="1" value="${formConfig.video.minAdDuration}">
               </label>
               <label class="guardian-label">最长片段时长（秒）
-                <input class="guardian-field" data-field="video.maxAdDuration" type="number" min="1" value="${this.config.video.maxAdDuration}">
+                <input class="guardian-field" data-field="video.maxAdDuration" type="number" min="1" value="${formConfig.video.maxAdDuration}">
               </label>
             </div>
             <div class="guardian-actions">
@@ -684,17 +865,69 @@ export class ControlCenter {
           </div>
         </details>
 
-        <details class="guardian-details">
-          <summary>问题排查</summary>
+        <details class="guardian-details" data-section="diagnostics" ${advancedSection === "diagnostics" ? "open" : ""}>
+          <summary data-action="open-advanced-section" data-section="diagnostics">问题排查</summary>
           <div class="guardian-details-body">
             <div class="guardian-note">如果你遇到识别失败、页面结构变化或自动跳过异常，可以先看看这里。</div>
-            <div class="guardian-diagnostics">${escapeHtml(diagnostics)}</div>
+            ${this.renderVideoDiagnosticDetail()}
+            <div class="guardian-subsection">
+              <div class="guardian-label">运行日志</div>
+              <div class="guardian-diagnostics">${escapeHtml(diagnostics)}</div>
+            </div>
             <div class="guardian-actions">
               <button class="guardian-btn" type="button" data-action="show-onboarding">重新查看使用说明</button>
               <button class="guardian-btn" type="button" data-action="clear-diagnostics">清空记录</button>
             </div>
           </div>
         </details>
+      </section>
+    `;
+  }
+
+  private renderVideoDiagnosticDetail(): string {
+    const details = this.runtime.videoErrorDetails;
+    if (!details) {
+      return `
+        <div class="guardian-empty" data-role="video-diagnostic-empty">
+          最近还没有视频识别失败的详细信息。等下一次失败发生后，这里会显示服务、模型、失败阶段和 AI 返回预览。
+        </div>
+      `;
+    }
+
+    return `
+      <section class="guardian-diagnostic-detail" data-role="video-diagnostic">
+        <div class="guardian-diagnostic-head">
+          <div>
+            <div class="guardian-label">最近一次视频识别失败</div>
+            <div class="guardian-note">${escapeHtml(toFailureCodeLabel(details.code))} · ${escapeHtml(toFailureStageLabel(details.stage))}</div>
+          </div>
+          <span class="guardian-pill danger">需要排查</span>
+        </div>
+        <div class="guardian-diagnostic-meta">
+          <span>服务：${escapeHtml(toProviderLabel(details.provider))}</span>
+          <span>模型：${escapeHtml(details.model)}</span>
+          <span>请求：${escapeHtml(details.requestId)}</span>
+          <span>读取来源：${escapeHtml(details.responseSource)}</span>
+        </div>
+        <div class="guardian-diagnostic-message">${escapeHtml(details.parserMessage)}</div>
+        <div class="guardian-note">建议动作：${escapeHtml(details.suggestion)}</div>
+        <div class="guardian-subsection">
+          <div class="guardian-label">提取文本预览</div>
+          <div class="guardian-diagnostics guardian-diagnostics-preview">${escapeHtml(details.responsePreview)}</div>
+        </div>
+        ${details.responseEnvelopePreview ? `
+          <div class="guardian-subsection">
+            <div class="guardian-label">原始响应摘要</div>
+            <div class="guardian-diagnostics guardian-diagnostics-preview">${escapeHtml(details.responseEnvelopePreview)}</div>
+          </div>
+        ` : ""}
+        ${details.exchangeTranscript ? `
+          <div class="guardian-subsection">
+            <div class="guardian-label">完整请求与响应</div>
+            <div class="guardian-note">已自动隐藏 Authorization / API Key，仅保留请求体与响应体内容。</div>
+            <div class="guardian-diagnostics guardian-diagnostics-preview">${escapeHtml(details.exchangeTranscript)}</div>
+          </div>
+        ` : ""}
       </section>
     `;
   }
@@ -935,9 +1168,18 @@ export class ControlCenter {
       this.callbacks.onTogglePanel();
     });
 
-    this.panel.querySelectorAll<HTMLElement>("[data-action='goto-advanced']").forEach((button) => {
+    this.panel.querySelectorAll<HTMLElement>("[data-action='goto-advanced-service']").forEach((button) => {
       button.addEventListener("click", () => {
-        this.callbacks.onSetTab("advanced");
+        this.openAdvancedSection("service");
+      });
+    });
+
+    this.panel.querySelectorAll<HTMLElement>("[data-action='open-advanced-section']").forEach((summary) => {
+      summary.addEventListener("click", (event) => {
+        event.preventDefault();
+        const section = summary.dataset.section as AdvancedSectionId;
+        this.expandedAdvancedSection = section;
+        this.renderModal();
       });
     });
 
@@ -992,17 +1234,11 @@ export class ControlCenter {
     });
 
     this.panel.querySelector<HTMLElement>("[data-action='save-feed']")?.addEventListener("click", async () => {
+      const formConfig = this.getFormConfig();
       await this.persistConfig(
         {
           feed: {
-            ...this.config.feed,
-            enabled: this.readCheckbox("feed.enabled", this.config.feed.enabled),
-            blockAds: this.readCheckbox("feed.blockAds", this.config.feed.blockAds),
-            blockLive: this.readCheckbox("feed.blockLive", this.config.feed.blockLive),
-            continuousScan: this.readCheckbox("feed.continuousScan", this.config.feed.continuousScan),
-            scopes: this.readScopes(),
-            categoryBlacklist: linesToList(this.readField("feed.categoryBlacklist", listToLines(this.config.feed.categoryBlacklist))),
-            keywordBlacklist: linesToList(this.readField("feed.keywordBlacklist", listToLines(this.config.feed.keywordBlacklist)))
+            ...formConfig.feed
           }
         },
         "首页过滤设置已保存。"
@@ -1010,18 +1246,11 @@ export class ControlCenter {
     });
 
     this.panel.querySelector<HTMLElement>("[data-action='save-video']")?.addEventListener("click", async () => {
+      const formConfig = this.getFormConfig();
       await this.persistConfig(
         {
           video: {
-            ...this.config.video,
-            enabled: this.readCheckbox("video.enabled", this.config.video.enabled),
-            defaultAutoSkip: this.readCheckbox("video.defaultAutoSkip", this.config.video.defaultAutoSkip),
-            probabilityThreshold: this.readNumberField("video.probabilityThreshold", this.config.video.probabilityThreshold),
-            durationPenalty: this.readNumberField("video.durationPenalty", this.config.video.durationPenalty),
-            minAdDuration: this.readNumberField("video.minAdDuration", this.config.video.minAdDuration),
-            maxAdDuration: this.readNumberField("video.maxAdDuration", this.config.video.maxAdDuration),
-            minDanmakuForAnalysis: this.readNumberField("video.minDanmakuForAnalysis", this.config.video.minDanmakuForAnalysis),
-            cacheTtlMinutes: this.readNumberField("video.cacheTtlMinutes", this.config.video.cacheTtlMinutes)
+            ...formConfig.video
           }
         },
         "视频跳过设置已保存。"
@@ -1029,14 +1258,15 @@ export class ControlCenter {
     });
 
     this.panel.querySelector<HTMLElement>("[data-action='save-service']")?.addEventListener("click", async () => {
+      const formConfig = this.getFormConfig();
       await this.persistConfig(
         {
           ai: {
             ...this.config.ai,
-            provider: this.readField("ai.provider", this.config.ai.provider) as ExtensionConfig["ai"]["provider"],
-            model: this.readField("ai.model", this.config.ai.model),
-            baseUrl: this.readField("ai.baseUrl", this.config.ai.baseUrl),
-            apiKey: this.readField("ai.apiKey", this.config.ai.apiKey)
+            provider: formConfig.ai.provider,
+            model: formConfig.ai.model,
+            baseUrl: formConfig.ai.baseUrl,
+            apiKey: formConfig.ai.apiKey
           }
         },
         "识别服务设置已保存。"
@@ -1044,36 +1274,62 @@ export class ControlCenter {
     });
 
     this.panel.querySelector<HTMLElement>("[data-action='save-preferences']")?.addEventListener("click", async () => {
+      const formConfig = this.getFormConfig();
       await this.persistConfig(
         {
           ai: {
             ...this.config.ai,
-            prompt: this.readField("ai.prompt", this.config.ai.prompt),
-            whitelist: linesToList(this.readField("ai.whitelist", listToLines(this.config.ai.whitelist))),
-            blacklist: linesToList(this.readField("ai.blacklist", listToLines(this.config.ai.blacklist))),
-            whitelistEnabled: this.readCheckbox("ai.whitelistEnabled", this.config.ai.whitelistEnabled),
-            whitelistRegex: this.readCheckbox("ai.whitelistRegex", this.config.ai.whitelistRegex),
-            blacklistEnabled: this.readCheckbox("ai.blacklistEnabled", this.config.ai.blacklistEnabled),
-            blacklistRegex: this.readCheckbox("ai.blacklistRegex", this.config.ai.blacklistRegex)
+            prompt: formConfig.ai.prompt,
+            whitelist: formConfig.ai.whitelist,
+            blacklist: formConfig.ai.blacklist,
+            whitelistEnabled: formConfig.ai.whitelistEnabled,
+            whitelistRegex: formConfig.ai.whitelistRegex,
+            blacklistEnabled: formConfig.ai.blacklistEnabled,
+            blacklistRegex: formConfig.ai.blacklistRegex
           },
           video: {
             ...this.config.video,
-            durationPenalty: this.readNumberField("video.durationPenalty", this.config.video.durationPenalty),
-            minDanmakuForAnalysis: this.readNumberField("video.minDanmakuForAnalysis", this.config.video.minDanmakuForAnalysis),
-            minAdDuration: this.readNumberField("video.minAdDuration", this.config.video.minAdDuration),
-            maxAdDuration: this.readNumberField("video.maxAdDuration", this.config.video.maxAdDuration)
+            durationPenalty: formConfig.video.durationPenalty,
+            minDanmakuForAnalysis: formConfig.video.minDanmakuForAnalysis,
+            minAdDuration: formConfig.video.minAdDuration,
+            maxAdDuration: formConfig.video.maxAdDuration
           }
         },
         "识别偏好已保存。"
       );
     });
 
+    this.panel.querySelector<HTMLSelectElement>("[data-action='select-model-option']")?.addEventListener("change", (event) => {
+      const element = event.currentTarget as HTMLSelectElement;
+      if (!element.value) {
+        return;
+      }
+
+      const formConfig = this.getFormConfig();
+      formConfig.ai.model = element.value;
+      if (formConfig.ai.provider === "custom") {
+        this.customServiceDraft.model = element.value;
+      }
+
+      this.renderModal();
+    });
+
     this.panel.querySelector<HTMLElement>("[data-action='fetch-models']")?.addEventListener("click", async () => {
-      const provider = this.readField("ai.provider", this.config.ai.provider) as ExtensionConfig["ai"]["provider"];
-      const baseUrl = this.readField("ai.baseUrl", this.config.ai.baseUrl);
+      const formConfig = this.getFormConfig();
+      const provider = formConfig.ai.provider;
+      const baseUrl = formConfig.ai.baseUrl;
 
       try {
         this.availableModels = await this.callbacks.onFetchModels(provider, baseUrl);
+        if (
+          this.availableModels.length > 0 &&
+          shouldAutoPickFetchedModel(provider, formConfig.ai.model)
+        ) {
+          formConfig.ai.model = this.availableModels[0];
+          if (provider === "custom") {
+            this.customServiceDraft.model = formConfig.ai.model;
+          }
+        }
         this.showToast(this.availableModels.length > 0 ? "已获取可用模型列表。" : "没有获取到模型列表，请检查服务设置。", this.availableModels.length > 0 ? "success" : "warning");
         this.renderModal();
       } catch (error) {
@@ -1107,6 +1363,151 @@ export class ControlCenter {
     });
   }
 
+  private handleFormMutation(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
+      return;
+    }
+
+    if (target.dataset.scope) {
+      const formConfig = this.getFormConfig();
+      const scopes = Array.from(this.panel.querySelectorAll<HTMLInputElement>("[data-scope]"))
+        .filter((input) => input.checked)
+        .map((input) => input.dataset.scope as FeedPageScope);
+      formConfig.feed.scopes = scopes.length > 0 ? scopes : this.config.feed.scopes;
+      return;
+    }
+
+    const field = target.dataset.field;
+    if (!field) {
+      return;
+    }
+
+    const formConfig = this.getFormConfig();
+
+    switch (field) {
+      case "feed.enabled":
+        formConfig.feed.enabled = target instanceof HTMLInputElement ? target.checked : formConfig.feed.enabled;
+        return;
+      case "feed.blockAds":
+        formConfig.feed.blockAds = target instanceof HTMLInputElement ? target.checked : formConfig.feed.blockAds;
+        return;
+      case "feed.blockLive":
+        formConfig.feed.blockLive = target instanceof HTMLInputElement ? target.checked : formConfig.feed.blockLive;
+        return;
+      case "feed.continuousScan":
+        formConfig.feed.continuousScan = target instanceof HTMLInputElement ? target.checked : formConfig.feed.continuousScan;
+        return;
+      case "feed.categoryBlacklist":
+        formConfig.feed.categoryBlacklist = linesToList(target.value);
+        return;
+      case "feed.keywordBlacklist":
+        formConfig.feed.keywordBlacklist = linesToList(target.value);
+        return;
+      case "video.enabled":
+        formConfig.video.enabled = target instanceof HTMLInputElement ? target.checked : formConfig.video.enabled;
+        return;
+      case "video.defaultAutoSkip":
+        formConfig.video.defaultAutoSkip = target instanceof HTMLInputElement ? target.checked : formConfig.video.defaultAutoSkip;
+        return;
+      case "video.probabilityThreshold":
+        formConfig.video.probabilityThreshold = this.readNumericValue(target.value, formConfig.video.probabilityThreshold);
+        return;
+      case "video.cacheTtlMinutes":
+        formConfig.video.cacheTtlMinutes = this.readNumericValue(target.value, formConfig.video.cacheTtlMinutes);
+        return;
+      case "video.durationPenalty":
+        formConfig.video.durationPenalty = this.readNumericValue(target.value, formConfig.video.durationPenalty);
+        return;
+      case "video.minDanmakuForAnalysis":
+        formConfig.video.minDanmakuForAnalysis = this.readNumericValue(target.value, formConfig.video.minDanmakuForAnalysis);
+        return;
+      case "video.minAdDuration":
+        formConfig.video.minAdDuration = this.readNumericValue(target.value, formConfig.video.minAdDuration);
+        return;
+      case "video.maxAdDuration":
+        formConfig.video.maxAdDuration = this.readNumericValue(target.value, formConfig.video.maxAdDuration);
+        return;
+      case "ai.provider":
+        if (target instanceof HTMLSelectElement) {
+          this.handleProviderChange(target.value as ExtensionConfig["ai"]["provider"]);
+        }
+        return;
+      case "ai.model":
+        formConfig.ai.model = target.value;
+        if (formConfig.ai.provider === "custom") {
+          this.customServiceDraft.model = target.value;
+        }
+        return;
+      case "ai.baseUrl":
+        formConfig.ai.baseUrl = target.value;
+        if (formConfig.ai.provider === "custom") {
+          this.customServiceDraft.baseUrl = target.value;
+        }
+        return;
+      case "ai.apiKey":
+        formConfig.ai.apiKey = target.value;
+        return;
+      case "ai.prompt":
+        formConfig.ai.prompt = target.value;
+        return;
+      case "ai.whitelist":
+        formConfig.ai.whitelist = linesToList(target.value);
+        return;
+      case "ai.blacklist":
+        formConfig.ai.blacklist = linesToList(target.value);
+        return;
+      case "ai.whitelistEnabled":
+        formConfig.ai.whitelistEnabled = target instanceof HTMLInputElement ? target.checked : formConfig.ai.whitelistEnabled;
+        return;
+      case "ai.whitelistRegex":
+        formConfig.ai.whitelistRegex = target instanceof HTMLInputElement ? target.checked : formConfig.ai.whitelistRegex;
+        return;
+      case "ai.blacklistEnabled":
+        formConfig.ai.blacklistEnabled = target instanceof HTMLInputElement ? target.checked : formConfig.ai.blacklistEnabled;
+        return;
+      case "ai.blacklistRegex":
+        formConfig.ai.blacklistRegex = target instanceof HTMLInputElement ? target.checked : formConfig.ai.blacklistRegex;
+        return;
+      default:
+        return;
+    }
+  }
+
+  private handleProviderChange(nextProvider: ExtensionConfig["ai"]["provider"]): void {
+    const formConfig = this.getFormConfig();
+    if (formConfig.ai.provider === "custom") {
+      this.customServiceDraft = {
+        baseUrl: formConfig.ai.baseUrl,
+        model: formConfig.ai.model
+      };
+    }
+
+    formConfig.ai.provider = nextProvider;
+    this.availableModels = [];
+
+    if (nextProvider === "custom") {
+      formConfig.ai.baseUrl = this.customServiceDraft.baseUrl;
+      formConfig.ai.model = this.customServiceDraft.model;
+    } else {
+      formConfig.ai.baseUrl = AI_PROVIDER_DEFAULTS[nextProvider].baseUrl;
+      formConfig.ai.model = AI_PROVIDER_DEFAULTS[nextProvider].models[0] ?? "";
+    }
+
+    this.renderModal();
+  }
+
+  private renderToast(): void {
+    const slot = this.panel.querySelector<HTMLElement>(".guardian-toast-slot");
+    if (!slot) {
+      return;
+    }
+
+    slot.innerHTML = this.toast
+      ? `<div class="guardian-toast ${this.toast.tone}" role="status" aria-live="polite">${escapeHtml(this.toast.text)}</div>`
+      : "";
+  }
+
   private async persistConfig(patch: DeepPartial<ExtensionConfig>, successMessage: string): Promise<void> {
     try {
       await this.callbacks.onSaveConfig(patch);
@@ -1121,11 +1522,11 @@ export class ControlCenter {
     if (this.toastTimer !== null) {
       window.clearTimeout(this.toastTimer);
     }
-    this.renderModal();
+    this.renderToast();
     this.toastTimer = window.setTimeout(() => {
       this.toast = null;
       this.toastTimer = null;
-      this.renderModal();
+      this.renderToast();
     }, 2600);
   }
 
@@ -1137,27 +1538,8 @@ export class ControlCenter {
     return "请稍后重试。";
   }
 
-  private readField(field: string, fallback = ""): string {
-    const element = this.panel.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[data-field="${field}"]`);
-    return element?.value ?? fallback;
-  }
-
-  private readNumberField(field: string, fallback: number): number {
-    const raw = this.readField(field, String(fallback)).trim();
-    const value = Number(raw);
+  private readNumericValue(raw: string, fallback: number): number {
+    const value = Number(raw.trim());
     return Number.isFinite(value) ? value : fallback;
-  }
-
-  private readCheckbox(field: string, fallback = false): boolean {
-    const element = this.panel.querySelector<HTMLInputElement>(`[data-field="${field}"]`);
-    return element ? element.checked : fallback;
-  }
-
-  private readScopes(): FeedPageScope[] {
-    const scopes = Array.from(this.panel.querySelectorAll<HTMLInputElement>("[data-scope]"))
-      .filter((input) => input.checked)
-      .map((input) => input.dataset.scope as FeedPageScope);
-
-    return scopes.length > 0 ? scopes : this.config.feed.scopes;
   }
 }
