@@ -1,15 +1,12 @@
+import { createErrorWithDetails } from "@/shared/errors";
 import type {
   BackgroundEnvelope,
+  BackgroundErrorEnvelope,
+  BackgroundSuccessEnvelope,
   BackgroundMessageType,
   BackgroundRequest,
   BackgroundResponse
 } from "@/shared/types";
-
-interface RuntimeReply<T> {
-  ok: boolean;
-  data?: T;
-  error?: string;
-}
 
 export async function sendMessage<K extends BackgroundMessageType>(
   type: K,
@@ -18,11 +15,15 @@ export async function sendMessage<K extends BackgroundMessageType>(
   const reply = (await chrome.runtime.sendMessage({
     type,
     payload
-  } satisfies BackgroundEnvelope<K>)) as RuntimeReply<BackgroundResponse<K>>;
+  } satisfies BackgroundEnvelope<K>)) as BackgroundSuccessEnvelope<K> | BackgroundErrorEnvelope;
 
   if (!reply.ok) {
+    if (reply.details) {
+      throw createErrorWithDetails(reply.error || "扩展消息失败", reply.details);
+    }
+
     throw new Error(reply.error || "扩展消息失败");
   }
 
-  return reply.data as BackgroundResponse<K>;
+  return reply.data;
 }

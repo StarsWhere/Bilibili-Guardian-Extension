@@ -2,6 +2,13 @@ export type ThemeMode = "light" | "dark";
 export type PanelTabId = "overview" | "feed" | "video" | "advanced" | "ai" | "diagnostics";
 export type AIProvider = "openai" | "deepseek" | "gemini" | "anthropic" | "custom";
 export type FeedPageScope = "home" | "search" | "popular" | "ranking" | "channel";
+export type VideoAnalysisFailureStage = "response_parse";
+export type VideoAnalysisFailureCode =
+  | "empty_response"
+  | "completed_without_output"
+  | "no_json_found"
+  | "invalid_json"
+  | "invalid_result_shape";
 export type VideoAnalysisPhase =
   | "idle"
   | "collecting"
@@ -90,6 +97,21 @@ export interface VideoAnalysisResult {
   rawResponse?: string;
 }
 
+export interface VideoAnalysisErrorDetails {
+  requestId: string;
+  provider: AIProvider;
+  model: string;
+  stage: VideoAnalysisFailureStage;
+  code: VideoAnalysisFailureCode;
+  parserMessage: string;
+  responsePreview: string;
+  responseSource: string;
+  responseLength: number;
+  suggestion: string;
+  responseEnvelopePreview?: string;
+  exchangeTranscript?: string;
+}
+
 export interface BackgroundAnalyzeVideoPayload {
   bvid: string;
   topComment: string;
@@ -151,6 +173,17 @@ export type BackgroundResponse<K extends BackgroundMessageType> = BackgroundMess
 export interface BackgroundEnvelope<K extends BackgroundMessageType = BackgroundMessageType> {
   type: K;
   payload: BackgroundRequest<K>;
+}
+
+export interface BackgroundSuccessEnvelope<K extends BackgroundMessageType = BackgroundMessageType> {
+  ok: true;
+  data: BackgroundResponse<K>;
+}
+
+export interface BackgroundErrorEnvelope {
+  ok: false;
+  error: string;
+  details?: VideoAnalysisErrorDetails;
 }
 
 export interface FeedScanResult {

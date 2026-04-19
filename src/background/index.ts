@@ -3,11 +3,14 @@ import { getCachedVideoResult, setCachedVideoResult } from "./cache";
 import { fetchModels, ensureCustomOriginPermission } from "./providers";
 import { loadConfig, saveConfig } from "./storage";
 import { mergeConfig } from "@/shared/config";
+import { getVideoAnalysisErrorDetails } from "@/shared/errors";
 import type {
   BackgroundEnvelope,
+  BackgroundErrorEnvelope,
   BackgroundMessageType,
   BackgroundRequest,
   BackgroundResponse,
+  BackgroundSuccessEnvelope,
   DeepPartial,
   ExtensionConfig
 } from "@/shared/types";
@@ -78,17 +81,19 @@ chrome.runtime.onMessage.addListener((message: BackgroundEnvelope, _sender, send
   const handler = handlers[message.type as BackgroundMessageType] as Handler<BackgroundMessageType> | undefined;
 
   if (!handler) {
-    sendResponse({ error: `未知消息类型：${message.type}` });
+    sendResponse({ ok: false, error: `未知消息类型：${message.type}` } satisfies BackgroundErrorEnvelope);
     return false;
   }
 
   Promise.resolve(handler(message.payload as never))
-    .then((response) => sendResponse({ ok: true, data: response }))
+    .then((response) => sendResponse({ ok: true, data: response } satisfies BackgroundSuccessEnvelope))
     .catch((error) => {
+      const details = getVideoAnalysisErrorDetails(error);
       sendResponse({
         ok: false,
-        error: error instanceof Error ? error.message : String(error)
-      });
+        error: error instanceof Error ? error.message : String(error),
+        ...(details ? { details } : {})
+      } satisfies BackgroundErrorEnvelope);
     });
 
   return true;
