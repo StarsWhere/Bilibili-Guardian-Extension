@@ -2,6 +2,7 @@ import { FeedGuard } from "@/content/modules/feedGuard";
 import { VideoGuard } from "@/content/modules/videoGuard";
 import { RouteManager } from "@/content/router";
 import { ControlCenter, type GuardianRuntimeState } from "@/content/ui/ControlCenter";
+import { DEFAULT_CONFIG } from "@/shared/config";
 import type { GuardianPlatformServices } from "@/shared/platform";
 import type { RouteModule } from "@/shared/router";
 import type { DeepPartial, ExtensionConfig, PanelTabId, VideoAnalysisErrorDetails } from "@/shared/types";
@@ -122,7 +123,7 @@ export class GuardianApp {
 
     this.routeManager = new RouteManager(routeModules);
     this.ui = new ControlCenter(
-      {} as ExtensionConfig,
+      DEFAULT_CONFIG,
       this.runtime,
       {
         onTogglePanel: () => void this.togglePanel(),
