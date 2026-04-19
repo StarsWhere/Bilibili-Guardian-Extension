@@ -55,7 +55,6 @@ describe("ControlCenter advanced settings", () => {
         config = mergeConfig(patch, config);
         controlCenter.update(config, runtime);
       }),
-      onSetTab: vi.fn(),
       onRunFeedScan: vi.fn(),
       onRunVideoAnalysis: vi.fn(),
       onFetchModels: vi.fn().mockResolvedValue([]),
@@ -105,7 +104,6 @@ describe("ControlCenter advanced settings", () => {
       onTogglePanel: vi.fn(),
       onSetTheme: vi.fn(),
       onSaveConfig: vi.fn().mockResolvedValue(undefined),
-      onSetTab: vi.fn(),
       onRunFeedScan: vi.fn(),
       onRunVideoAnalysis: vi.fn(),
       onFetchModels,
@@ -159,7 +157,6 @@ describe("ControlCenter advanced settings", () => {
       onTogglePanel: vi.fn(),
       onSetTheme: vi.fn(),
       onSaveConfig: vi.fn().mockResolvedValue(undefined),
-      onSetTab: vi.fn(),
       onRunFeedScan: vi.fn(),
       onRunVideoAnalysis: vi.fn(),
       onFetchModels: vi.fn().mockResolvedValue([]),
@@ -210,16 +207,6 @@ describe("ControlCenter advanced settings", () => {
       onTogglePanel: vi.fn(),
       onSetTheme: vi.fn(),
       onSaveConfig: vi.fn().mockResolvedValue(undefined),
-      onSetTab: vi.fn((tab) => {
-        config = {
-          ...config,
-          ui: {
-            ...config.ui,
-            activeTab: tab
-          }
-        };
-        controlCenter.update(config, runtime);
-      }),
       onRunFeedScan: vi.fn(),
       onRunVideoAnalysis: vi.fn(),
       onFetchModels: vi.fn().mockResolvedValue([]),
@@ -268,7 +255,6 @@ describe("ControlCenter advanced settings", () => {
       onTogglePanel: vi.fn(),
       onSetTheme: vi.fn(),
       onSaveConfig: vi.fn().mockResolvedValue(undefined),
-      onSetTab: vi.fn(),
       onRunFeedScan: vi.fn(),
       onRunVideoAnalysis: vi.fn(),
       onFetchModels: vi.fn().mockResolvedValue([]),
@@ -293,5 +279,60 @@ describe("ControlCenter advanced settings", () => {
     expect(detail?.textContent).toContain("Request Body:");
     const logs = document.querySelectorAll(".guardian-diagnostics");
     expect(logs[3]?.textContent).toContain("VideoGuard 分析失败");
+
+  });
+  it("switches tabs locally and resets to overview after closing and reopening", async () => {
+    let config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: true,
+        activeTab: "overview"
+      }
+    };
+
+    const runtime = createRuntime();
+    let controlCenter!: ControlCenter;
+    const onSaveConfig = vi.fn().mockResolvedValue(undefined);
+
+    controlCenter = new ControlCenter(config, runtime, {
+      onTogglePanel: vi.fn(() => {
+        config = {
+          ...config,
+          ui: {
+            ...config.ui,
+            panelOpen: !config.ui.panelOpen
+          }
+        };
+        controlCenter.update(config, runtime);
+      }),
+      onSetTheme: vi.fn(),
+      onSaveConfig,
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    document.querySelector<HTMLElement>("[data-tab='video']")?.click();
+    await flushPromises();
+
+    expect(document.querySelector(".guardian-tab.active")?.textContent).toContain("视频跳过");
+    expect(onSaveConfig).not.toHaveBeenCalled();
+
+    document.querySelector<HTMLElement>("[data-action='close-panel']")?.click();
+    await flushPromises();
+    expect(document.querySelector(".guardian-overlay.open")).toBeNull();
+
+    await controlCenter.openPanel();
+    await flushPromises();
+
+    expect(document.querySelector(".guardian-tab.active")?.textContent).toContain("主页概览");
+    expect(onSaveConfig).not.toHaveBeenCalled();
+  });
   });
 });

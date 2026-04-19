@@ -5,7 +5,7 @@ import { ControlCenter, type GuardianRuntimeState } from "@/content/ui/ControlCe
 import { DEFAULT_CONFIG } from "@/shared/config";
 import type { GuardianPlatformServices } from "@/shared/platform";
 import type { RouteModule } from "@/shared/router";
-import type { DeepPartial, ExtensionConfig, PanelTabId, VideoAnalysisErrorDetails } from "@/shared/types";
+import type { DeepPartial, ExtensionConfig, VideoAnalysisErrorDetails } from "@/shared/types";
 import { classifyFeedPage, isVideoPage } from "@/shared/url";
 
 export class GuardianApp {
@@ -126,12 +126,11 @@ export class GuardianApp {
       DEFAULT_CONFIG,
       this.runtime,
       {
-        onTogglePanel: () => void this.togglePanel(),
-        onSetTheme: (theme) => void this.saveConfig({ ui: { ...this.config.ui, theme } }),
+        onTogglePanel: () => this.togglePanel(),
+        onSetTheme: (theme) => this.saveConfig({ ui: { ...this.config.ui, theme } }),
         onSaveConfig: (next) => this.saveConfig(next),
-        onSetTab: (tab) => void this.setTab(tab),
         onRunFeedScan: () => this.feedGuard.runScan(),
-        onRunVideoAnalysis: () => void this.videoGuard.rerun(true),
+        onRunVideoAnalysis: () => this.videoGuard.rerun(true),
         onFetchModels: (provider, baseUrl) => this.services.fetchModels(provider, baseUrl),
         onToggleCurrentVideoAutoSkip: (enabled) => {
           this.runtime.currentVideoAutoSkip = enabled;
@@ -201,9 +200,6 @@ export class GuardianApp {
     }
   }
 
-  private async setTab(tab: PanelTabId): Promise<void> {
-    await this.saveConfig({ ui: { ...this.config.ui, activeTab: tab } });
-  }
 
   private render(): void {
     document.body.dataset.guardianTheme = this.config?.ui?.theme ?? "light";

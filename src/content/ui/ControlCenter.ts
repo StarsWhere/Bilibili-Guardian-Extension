@@ -28,10 +28,9 @@ export interface GuardianRuntimeState {
 }
 
 interface ControlCenterCallbacks {
-  onTogglePanel(): void;
-  onSetTheme(theme: "light" | "dark"): void;
+  onTogglePanel(): void | Promise<void>;
+  onSetTheme(theme: "light" | "dark"): void | Promise<void>;
   onSaveConfig(next: DeepPartial<ExtensionConfig>): Promise<void>;
-  onSetTab(tab: PanelTabId): void;
   onRunFeedScan(): void;
   onRunVideoAnalysis(): void;
   onFetchModels(provider: ExtensionConfig["ai"]["provider"], baseUrl: string): Promise<string[]>;
@@ -222,12 +221,14 @@ export class ControlCenter {
   private restoreFocusTarget: HTMLElement | null = null;
   private previousBodyOverflow = "";
   private previousHtmlOverflow = "";
+  private panelTab: DisplayTabId;
   private toast: { text: string; tone: ToastTone } | null = null;
   private toastTimer: number | null = null;
 
   constructor(initialConfig: ExtensionConfig, initialRuntime: GuardianRuntimeState, private readonly callbacks: ControlCenterCallbacks) {
     this.config = initialConfig;
     this.runtime = initialRuntime;
+    this.panelTab = normalizeTab(initialConfig.ui?.activeTab ?? "overview");
     this.root = document.createElement("div");
     this.root.id = "guardian-root";
     this.style = document.createElement("style");
@@ -257,6 +258,18 @@ export class ControlCenter {
     this.config = config;
     this.runtime = runtime;
     this.render();
+  }
+
+  public async openPanel(tab: PanelTabId = "overview"): Promise<void> {
+    this.panelTab = normalizeTab(tab);
+
+    if (!this.config.ui.panelOpen) {
+      this.restoreFocusTarget = this.button;
+      await Promise.resolve(this.callbacks.onTogglePanel());
+      return;
+    }
+
+    this.renderModal();
   }
 
   private bindGlobalEvents(): void {
@@ -334,6 +347,9 @@ export class ControlCenter {
       const endPosition = this.config.ui.floatingButtonPosition;
       if (!hasDragged(origin, endPosition)) {
         this.restoreFocusTarget = this.button;
+        if (!this.config.ui.panelOpen) {
+          this.panelTab = "overview";
+        }
         this.callbacks.onTogglePanel();
         return;
       }
@@ -394,7 +410,7 @@ export class ControlCenter {
       return next;
     }
 
-    if (!serviceReady && !this.pendingAdvancedSection && normalizeTab(this.config.ui.activeTab) === "advanced") {
+    if (!serviceReady && !this.pendingAdvancedSection && this.panelTab === "advanced") {
       return this.expandedAdvancedSection || "service";
     }
 
@@ -457,8 +473,9 @@ export class ControlCenter {
 
   private openAdvancedSection(section: AdvancedSectionId): void {
     this.pendingAdvancedSection = section;
-    if (normalizeTab(this.config.ui.activeTab) !== "advanced") {
-      this.callbacks.onSetTab("advanced");
+    if (this.panelTab !== "advanced") {
+      this.panelTab = "advanced";
+      this.renderModal();
       return;
     }
 
@@ -484,6 +501,7 @@ export class ControlCenter {
     } else if (wasOpen && !isOpen) {
       this.draftConfig = null;
       this.pendingAdvancedSection = null;
+      this.panelTab = "overview";
       this.handleClose();
     }
   }
@@ -548,7 +566,7 @@ export class ControlCenter {
 
   private renderModal(): void {
     const snapshot = this.capturePanelSnapshot();
-    const currentTab = normalizeTab(this.config.ui.activeTab);
+    const currentTab = this.panelTab;
     const diagnostics = this.runtime.diagnostics.length > 0 ? this.runtime.diagnostics.join("\n") : "暂时还没有问题排查记录。";
     const persistedServiceReady = hasConfiguredRecognitionService(this.config);
     const formConfig = this.getFormConfig();
@@ -1155,12 +1173,17 @@ export class ControlCenter {
     this.panel.querySelectorAll<HTMLElement>("[data-tab]").forEach((button) => {
       button.addEventListener("click", () => {
         const tab = button.dataset.tab as DisplayTabId;
-        this.callbacks.onSetTab(tab === "advanced" ? "advanced" : tab);
+        if (this.panelTab === tab) {
+          return;
+        }
+
+        this.panelTab = tab;
+        this.renderModal();
       });
     });
 
     this.panel.querySelector<HTMLElement>("[data-action='toggle-theme']")?.addEventListener("click", () => {
-      this.callbacks.onSetTheme(this.config.ui.theme === "dark" ? "light" : "dark");
+      void Promise.resolve(this.callbacks.onSetTheme(this.config.ui.theme === "dark" ? "light" : "dark"));
       this.showToast(this.config.ui.theme === "dark" ? "已切换为浅色模式。" : "已切换为深色模式。", "success");
     });
 
@@ -1200,12 +1223,13 @@ export class ControlCenter {
         {
           ui: {
             ...this.config.ui,
-            onboardingDismissed: false,
-            activeTab: "overview"
+            onboardingDismissed: false
           }
         },
         "已重新打开使用说明。"
       );
+      this.panelTab = "overview";
+      this.renderModal();
     });
 
     this.panel.querySelectorAll<HTMLElement>("[data-action='run-feed']").forEach((button) => {
