@@ -939,6 +939,8 @@ export class ControlCenter {
           ${this.renderSwitchField("feed.blockAds", "隐藏广告与推广内容", "优先移除明显推广卡片和广告位。", formConfig.feed.blockAds)}
           ${this.renderSwitchField("feed.blockLive", "隐藏直播推荐", "减少直播内容对首页和搜索结果的打扰。", formConfig.feed.blockLive)}
           ${this.renderSwitchField("feed.continuousScan", "自动跟随新内容继续整理", "页面动态加载新卡片时，继续保持整理效果。", formConfig.feed.continuousScan)}
+          ${this.renderSwitchField("feed.autoDislikeContent", "屏蔽时自动点不感兴趣", "开启后，移除命中内容前会尝试向 B 站反馈不感兴趣。", formConfig.feed.autoDislikeContent)}
+          ${this.renderSwitchField("feed.autoDislikeAuthor", "屏蔽时自动点不想看此 UP 主", "开启后，移除命中内容前会尝试向 B 站反馈不想看此 UP 主。", formConfig.feed.autoDislikeAuthor)}
         </div>
         <div class="guardian-subsection">
           <div class="guardian-label">在哪些页面生效</div>
@@ -1697,6 +1699,12 @@ export class ControlCenter {
         return;
       case "feed.continuousScan":
         formConfig.feed.continuousScan = target instanceof HTMLInputElement ? target.checked : formConfig.feed.continuousScan;
+        return;
+      case "feed.autoDislikeContent":
+        formConfig.feed.autoDislikeContent = target instanceof HTMLInputElement ? target.checked : formConfig.feed.autoDislikeContent;
+        return;
+      case "feed.autoDislikeAuthor":
+        formConfig.feed.autoDislikeAuthor = target instanceof HTMLInputElement ? target.checked : formConfig.feed.autoDislikeAuthor;
         return;
       case "feed.categoryBlacklist":
         formConfig.feed.categoryBlacklist = linesToList(target.value);
