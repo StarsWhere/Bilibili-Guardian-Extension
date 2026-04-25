@@ -84,7 +84,31 @@ export interface FeedCardModel {
   category: string;
   isAd: boolean;
   isLive: boolean;
+  feedback: FeedFeedbackTarget | null;
   element: HTMLElement;
+}
+
+export type FeedFeedbackAction = "content" | "author";
+
+export interface FeedFeedbackTarget {
+  title: string;
+  author: string;
+  bvid: string | null;
+  id: number | null;
+  mid: number | null;
+  goto: string;
+  trackId: string;
+  spmid: string;
+  fromSpmid: string;
+}
+
+export interface FeedFeedbackPayload extends FeedFeedbackTarget {
+  action: FeedFeedbackAction;
+}
+
+export interface FeedFeedbackResult {
+  ok: boolean;
+  message: string;
 }
 
 export interface VideoAnalysisResult {
@@ -143,6 +167,10 @@ export interface BackgroundMessageMap {
       acknowledged: true;
       receivedAt: number;
     };
+  };
+  SUBMIT_FEED_FEEDBACK: {
+    request: FeedFeedbackPayload;
+    response: FeedFeedbackResult;
   };
   ANALYZE_VIDEO: {
     request: BackgroundAnalyzeVideoPayload;

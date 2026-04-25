@@ -3,6 +3,7 @@ export interface HttpRequestOptions {
   headers?: Record<string, string>;
   body?: string;
   signal?: AbortSignal;
+  credentials?: RequestCredentials;
 }
 
 export interface HttpResponse<T> {
@@ -37,7 +38,8 @@ export function createFetchHttpClient(): HttpClient {
         method: options.method,
         headers: options.headers,
         body: options.body,
-        signal: options.signal
+        signal: options.signal,
+        credentials: options.credentials
       });
 
       return {
@@ -51,7 +53,8 @@ export function createFetchHttpClient(): HttpClient {
         method: options.method,
         headers: options.headers,
         body: options.body,
-        signal: options.signal
+        signal: options.signal,
+        credentials: options.credentials
       });
 
       return {
