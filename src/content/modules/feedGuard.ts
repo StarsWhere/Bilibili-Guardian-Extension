@@ -209,6 +209,7 @@ function extractCards(): FeedCardModel[] {
     const category = firstText(element, CATEGORY_SELECTORS) || element.closest(".bili-grid-floor")?.querySelector(".bili-grid-floor-header__title")?.textContent?.trim() || "";
     const plainText = element.textContent || "";
     const isLive = isLiveCard(element, plainText);
+    const feedback = buildFeedbackTarget(element, title, author);
 
     return {
       title,
@@ -216,8 +217,8 @@ function extractCards(): FeedCardModel[] {
       category,
       isAd: AD_SELECTORS.some((selector) => element.matches(selector) || Boolean(element.querySelector(selector))) || /广告|推广/.test(plainText),
       isLive,
-      feedback: buildFeedbackTarget(element, title, author),
-      feedbackUnsupportedReason: isLive ? "live" : null,
+      feedback,
+      feedbackUnsupportedReason: isLive ? "live" : feedback ? null : "non-video",
       element
     };
   });
@@ -361,7 +362,7 @@ export class FeedGuard {
   }
 
   private async performFeedbackActions(card: FeedCardModel): Promise<void> {
-    if (card.feedbackUnsupportedReason === "live") {
+    if (card.feedbackUnsupportedReason) {
       return;
     }
 

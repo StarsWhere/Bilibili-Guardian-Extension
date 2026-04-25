@@ -90,7 +90,7 @@ export interface FeedCardModel {
 }
 
 export type FeedFeedbackAction = "content" | "author";
-export type FeedFeedbackUnsupportedReason = "live";
+export type FeedFeedbackUnsupportedReason = "live" | "non-video";
 
 export interface FeedFeedbackTarget {
   title: string;
