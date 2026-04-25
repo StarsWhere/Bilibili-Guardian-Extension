@@ -85,10 +85,12 @@ export interface FeedCardModel {
   isAd: boolean;
   isLive: boolean;
   feedback: FeedFeedbackTarget | null;
+  feedbackUnsupportedReason: FeedFeedbackUnsupportedReason | null;
   element: HTMLElement;
 }
 
 export type FeedFeedbackAction = "content" | "author";
+export type FeedFeedbackUnsupportedReason = "live";
 
 export interface FeedFeedbackTarget {
   title: string;

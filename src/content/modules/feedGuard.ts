@@ -181,14 +181,16 @@ function extractCards(): FeedCardModel[] {
     const author = firstText(element, AUTHOR_SELECTORS);
     const category = firstText(element, CATEGORY_SELECTORS) || element.closest(".bili-grid-floor")?.querySelector(".bili-grid-floor-header__title")?.textContent?.trim() || "";
     const plainText = element.textContent || "";
+    const isLive = LIVE_SELECTORS.some((selector) => element.matches(selector) || Boolean(element.querySelector(selector))) || plainText.includes("正在直播");
 
     return {
       title,
       author,
       category,
       isAd: AD_SELECTORS.some((selector) => element.matches(selector) || Boolean(element.querySelector(selector))) || /广告|推广/.test(plainText),
-      isLive: LIVE_SELECTORS.some((selector) => element.matches(selector) || Boolean(element.querySelector(selector))) || plainText.includes("正在直播"),
+      isLive,
       feedback: buildFeedbackTarget(element, title, author),
+      feedbackUnsupportedReason: isLive ? "live" : null,
       element
     };
   });
@@ -332,6 +334,10 @@ export class FeedGuard {
   }
 
   private async performFeedbackActions(card: FeedCardModel): Promise<void> {
+    if (card.feedbackUnsupportedReason === "live") {
+      return;
+    }
+
     if (!card.feedback) {
       const missingKey = getMissingFeedbackKey(card);
       if (!this.missingFeedbackKeys.has(missingKey)) {
