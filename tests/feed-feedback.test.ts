@@ -1,5 +1,5 @@
 import { submitFeedFeedbackWithClient } from "@/core/feedFeedback";
-import type { HttpClient } from "@/core/http";
+import type { HttpClient, HttpRequestOptions, HttpResponse } from "@/core/http";
 import type { FeedFeedbackPayload } from "@/shared/types";
 
 function createPayload(overrides: Partial<FeedFeedbackPayload> = {}): FeedFeedbackPayload {
@@ -18,19 +18,27 @@ function createPayload(overrides: Partial<FeedFeedbackPayload> = {}): FeedFeedba
   };
 }
 
-describe("submitFeedFeedbackWithClient", () => {
-  it("submits PC dislike feedback with the expected form fields", async () => {
-    const requestJson = vi.fn(async () => ({
+function createRequestJsonMock(
+  implementation?: (url: string, options?: HttpRequestOptions) => Promise<HttpResponse<unknown>>
+) {
+  return vi.fn(
+    implementation ?? (async (_url: string, _options?: HttpRequestOptions) => ({
       ok: true,
       status: 200,
       data: {
         code: 0,
         message: "0"
       }
-    }));
+    }))
+  );
+}
+
+describe("submitFeedFeedbackWithClient", () => {
+  it("submits PC dislike feedback with the expected form fields", async () => {
+    const requestJson = createRequestJsonMock();
     const client = {
       requestText: vi.fn(),
-      requestJson
+      requestJson: requestJson as HttpClient["requestJson"]
     } as unknown as HttpClient;
 
     await expect(submitFeedFeedbackWithClient(client, createPayload({ action: "author" }))).resolves.toEqual({
@@ -51,8 +59,7 @@ describe("submitFeedFeedbackWithClient", () => {
   });
 
   it("resolves aid from bvid when the card did not expose aid", async () => {
-    const requestJson = vi
-      .fn()
+    const requestJson = createRequestJsonMock()
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -76,7 +83,7 @@ describe("submitFeedFeedbackWithClient", () => {
       });
     const client = {
       requestText: vi.fn(),
-      requestJson
+      requestJson: requestJson as HttpClient["requestJson"]
     } as unknown as HttpClient;
 
     await submitFeedFeedbackWithClient(client, createPayload({ id: null, mid: null }));
