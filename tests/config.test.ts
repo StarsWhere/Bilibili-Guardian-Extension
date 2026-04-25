@@ -10,6 +10,8 @@ describe("mergeConfig", () => {
 
     expect(merged.video.probabilityThreshold).toBe(88);
     expect(merged.feed.blockAds).toBe(DEFAULT_CONFIG.feed.blockAds);
+    expect(merged.feed.autoDislikeContent).toBe(false);
+    expect(merged.feed.autoDislikeAuthor).toBe(false);
     expect(merged.ai.provider).toBe(DEFAULT_CONFIG.ai.provider);
   });
 

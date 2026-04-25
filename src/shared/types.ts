@@ -45,6 +45,8 @@ export interface ExtensionConfig {
     blockAds: boolean;
     blockLive: boolean;
     continuousScan: boolean;
+    autoDislikeContent: boolean;
+    autoDislikeAuthor: boolean;
     keywordBlacklist: string[];
     categoryBlacklist: string[];
     scopes: FeedPageScope[];

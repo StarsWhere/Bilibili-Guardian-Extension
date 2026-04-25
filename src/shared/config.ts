@@ -92,6 +92,8 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
     blockAds: true,
     blockLive: true,
     continuousScan: true,
+    autoDislikeContent: false,
+    autoDislikeAuthor: false,
     keywordBlacklist: [],
     categoryBlacklist: ["番剧", "直播", "国创", "电影", "电视剧", "漫画"],
     scopes: ["home", "search", "popular", "ranking", "channel"]
