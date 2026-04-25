@@ -1,6 +1,6 @@
 import { DEFAULT_CONFIG } from "@/shared/config";
 import type { FeedCardModel } from "@/shared/types";
-import { buildFeedbackTarget, shouldFilterCard, shouldIgnoreMutations } from "@/content/modules/feedGuard";
+import { FeedGuard, buildFeedbackTarget, shouldFilterCard, shouldIgnoreMutations } from "@/content/modules/feedGuard";
 
 function createCard(overrides: Partial<FeedCardModel>): FeedCardModel {
   return {
@@ -102,5 +102,40 @@ describe("buildFeedbackTarget", () => {
       goto: "av",
       spmid: "333.1007"
     });
+  });
+});
+
+describe("FeedGuard feedback submission", () => {
+  it("deduplicates feedback for the same card across repeated scans", () => {
+    document.body.innerHTML = `
+      <div class="bili-video-card">
+        <a class="bili-video-card__image--link" href="https://www.bilibili.com/video/BV1Duplicate" data-spmid="333.1007"></a>
+        <h3 class="bili-video-card__info--tit">重复标题</h3>
+        <a class="bili-video-card__info--owner" href="//space.bilibili.com/123">
+          <span class="bili-video-card__info--author">重复 UP</span>
+        </a>
+      </div>
+    `;
+
+    const submitFeedFeedback = vi.fn().mockResolvedValue({ ok: true, message: "OK" });
+    const guard = new FeedGuard({
+      config: {
+        ...DEFAULT_CONFIG,
+        feed: {
+          ...DEFAULT_CONFIG.feed,
+          keywordBlacklist: ["重复标题"],
+          autoDislikeContent: true
+        }
+      },
+      notifyFeedScan: vi.fn(),
+      log: vi.fn(),
+      sendFeedScanMetric: vi.fn().mockResolvedValue(undefined),
+      submitFeedFeedback
+    });
+
+    void guard.mount(new URL("https://www.bilibili.com/"));
+    guard.runScan();
+
+    expect(submitFeedFeedback).toHaveBeenCalledTimes(1);
   });
 });
