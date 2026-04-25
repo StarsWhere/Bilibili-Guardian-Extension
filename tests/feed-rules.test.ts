@@ -1,6 +1,6 @@
 import { DEFAULT_CONFIG } from "@/shared/config";
 import type { FeedCardModel } from "@/shared/types";
-import { shouldFilterCard, shouldIgnoreMutations } from "@/content/modules/feedGuard";
+import { clickCardFeedbackAction, shouldFilterCard, shouldIgnoreMutations } from "@/content/modules/feedGuard";
 
 function createCard(overrides: Partial<FeedCardModel>): FeedCardModel {
   return {
@@ -13,6 +13,11 @@ function createCard(overrides: Partial<FeedCardModel>): FeedCardModel {
     ...overrides
   };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+  document.body.innerHTML = "";
+});
 
 describe("shouldFilterCard", () => {
   it("filters ads when enabled", () => {
@@ -76,5 +81,82 @@ describe("shouldIgnoreMutations", () => {
         }
       ])
     ).toBe(false);
+  });
+});
+
+describe("clickCardFeedbackAction", () => {
+  it("clicks a direct feedback button inside a card", async () => {
+    const card = document.createElement("div");
+    const button = document.createElement("button");
+    const clicked = vi.fn();
+    button.textContent = "不感兴趣";
+    button.getBoundingClientRect = () => ({ width: 10, height: 10 }) as DOMRect;
+    button.addEventListener("click", clicked);
+    card.appendChild(button);
+    document.body.appendChild(card);
+
+    await expect(clickCardFeedbackAction(card, ["不感兴趣"])).resolves.toBe(true);
+    expect(clicked).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the card menu before clicking an overlay feedback button", async () => {
+    vi.useFakeTimers();
+
+    const card = document.createElement("div");
+    const trigger = document.createElement("button");
+    const menuItem = document.createElement("button");
+    const clicked = vi.fn();
+
+    trigger.title = "更多";
+    trigger.className = "more";
+    trigger.getBoundingClientRect = () => ({ width: 10, height: 10 }) as DOMRect;
+    trigger.addEventListener("click", () => {
+      document.body.appendChild(menuItem);
+    });
+
+    menuItem.textContent = "不想看此 UP 主";
+    menuItem.getBoundingClientRect = () => ({ width: 10, height: 10 }) as DOMRect;
+    menuItem.addEventListener("click", clicked);
+
+    card.appendChild(trigger);
+    document.body.appendChild(card);
+
+    const promise = clickCardFeedbackAction(card, ["不想看此 UP 主"]);
+    await vi.advanceTimersByTimeAsync(120);
+
+    await expect(promise).resolves.toBe(true);
+    expect(clicked).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicks the hidden Bilibili homepage no-interest trigger when its result title matches", async () => {
+    vi.useFakeTimers();
+
+    const card = document.createElement("div");
+    const result = document.createElement("div");
+    const resultTitle = document.createElement("span");
+    const trigger = document.createElement("div");
+    const clicked = vi.fn();
+
+    result.className = "bili-video-card__no-interest";
+    result.style.display = "none";
+    resultTitle.className = "no-interest-title";
+    resultTitle.textContent = "不想看此UP主";
+    result.appendChild(resultTitle);
+
+    trigger.className = "bili-video-card__info--no-interest";
+    trigger.style.display = "none";
+    trigger.addEventListener("click", () => {
+      clicked();
+      result.style.display = "block";
+    });
+
+    card.append(result, trigger);
+    document.body.appendChild(card);
+
+    const promise = clickCardFeedbackAction(card, ["不想看此 UP 主"]);
+    await vi.advanceTimersByTimeAsync(120);
+
+    await expect(promise).resolves.toBe(true);
+    expect(clicked).toHaveBeenCalledTimes(1);
   });
 });
