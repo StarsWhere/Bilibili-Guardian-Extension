@@ -237,10 +237,26 @@ function hasFeedbackActionEnabled(config: ExtensionConfig): boolean {
   return config.feed.autoDislikeContent || config.feed.autoDislikeAuthor;
 }
 
+function getFeedbackTargetLabel(target: FeedFeedbackTarget): string {
+  return target.title || target.bvid || (target.id ? String(target.id) : "未知内容");
+}
+
+function getFeedbackKey(target: FeedFeedbackTarget, action: FeedFeedbackAction): string {
+  const contentId = target.id ? `aid:${target.id}` : `bvid:${target.bvid ?? target.title}`;
+  const authorId = target.mid ? `mid:${target.mid}` : `author:${target.author}`;
+  return `${action}:${contentId}:${authorId}`;
+}
+
+function getMissingFeedbackKey(card: FeedCardModel): string {
+  return card.title || card.author || card.category || card.element.textContent?.trim() || "unknown";
+}
+
 export class FeedGuard {
   private observer: MutationObserver | null = null;
   private throttleId: number | null = null;
   private currentScope: FeedPageScope | null = null;
+  private readonly submittedFeedbackKeys = new Set<string>();
+  private readonly missingFeedbackKeys = new Set<string>();
 
   constructor(private readonly app: FeedGuardApp) {}
 
@@ -289,6 +305,8 @@ export class FeedGuard {
     this.observer?.disconnect();
     this.observer = null;
     this.currentScope = null;
+    this.submittedFeedbackKeys.clear();
+    this.missingFeedbackKeys.clear();
   }
 
   runScan(): void {
@@ -315,7 +333,11 @@ export class FeedGuard {
 
   private async performFeedbackActions(card: FeedCardModel): Promise<void> {
     if (!card.feedback) {
-      this.app.log(`首页反馈跳过：无法从卡片提取 aid/bvid（${card.title || "无标题"}）`);
+      const missingKey = getMissingFeedbackKey(card);
+      if (!this.missingFeedbackKeys.has(missingKey)) {
+        this.missingFeedbackKeys.add(missingKey);
+        this.app.log(`首页反馈跳过：无法从卡片提取 aid/bvid（${card.title || "无标题"}）`);
+      }
       return;
     }
 
@@ -330,15 +352,21 @@ export class FeedGuard {
 
   private async submitFeedbackAction(target: FeedFeedbackTarget, action: FeedFeedbackAction): Promise<void> {
     const actionLabel = action === "content" ? "不感兴趣" : "不想看此 UP 主";
+    const feedbackKey = getFeedbackKey(target, action);
+    if (this.submittedFeedbackKeys.has(feedbackKey)) {
+      return;
+    }
+
+    this.submittedFeedbackKeys.add(feedbackKey);
     try {
       const result = await this.app.submitFeedFeedback({
         ...target,
         action
       });
-      this.app.log(`首页反馈成功：${actionLabel} / ${target.title || target.bvid || target.id} / ${result.message}`);
+      this.app.log(`首页反馈成功：${actionLabel} / ${getFeedbackTargetLabel(target)} / ${result.message}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.app.log(`首页反馈失败：${actionLabel} / ${target.title || target.bvid || target.id} / ${message}`);
+      this.app.log(`首页反馈失败：${actionLabel} / ${getFeedbackTargetLabel(target)} / ${message}`);
     }
   }
 }
