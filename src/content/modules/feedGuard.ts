@@ -13,6 +13,7 @@ const CARD_ROOT_SELECTORS = [
   ".feed-card",
   ".bili-video-card",
   ".bili-feed-card",
+  ".floor-card-inner",
   ".floor-single-card",
   ".video-card",
   ".rank-item",
@@ -53,9 +54,14 @@ const AD_SELECTORS = [
 
 const LIVE_SELECTORS = [
   ".live-tag",
+  ".living",
   ".recommend-card__live-status",
   ".bili-live-card",
-  ".live-mark"
+  ".live-mark",
+  "#channel-icon-live",
+  "a[href*='live.bilibili.com']",
+  "img[src*='/live/']",
+  "img[src*='live.gif']"
 ];
 
 const BVID_PATTERN = /\/video\/(BV[a-zA-Z0-9]+)/;
@@ -175,13 +181,19 @@ export function buildFeedbackTarget(element: HTMLElement, title: string, author:
   };
 }
 
+function isLiveCard(element: HTMLElement, plainText: string): boolean {
+  return LIVE_SELECTORS.some((selector) => element.matches(selector) || Boolean(element.querySelector(selector))) ||
+    plainText.includes("正在直播") ||
+    plainText.includes("直播中");
+}
+
 function extractCards(): FeedCardModel[] {
   return uniqueCardRoots().map((element) => {
     const title = firstText(element, TITLE_SELECTORS);
     const author = firstText(element, AUTHOR_SELECTORS);
     const category = firstText(element, CATEGORY_SELECTORS) || element.closest(".bili-grid-floor")?.querySelector(".bili-grid-floor-header__title")?.textContent?.trim() || "";
     const plainText = element.textContent || "";
-    const isLive = LIVE_SELECTORS.some((selector) => element.matches(selector) || Boolean(element.querySelector(selector))) || plainText.includes("正在直播");
+    const isLive = isLiveCard(element, plainText);
 
     return {
       title,
