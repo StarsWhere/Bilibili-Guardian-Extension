@@ -1,6 +1,6 @@
 import { DEFAULT_CONFIG } from "@/shared/config";
 import type { FeedCardModel } from "@/shared/types";
-import { clickCardFeedbackAction, shouldFilterCard, shouldIgnoreMutations } from "@/content/modules/feedGuard";
+import { buildFeedbackTarget, shouldFilterCard, shouldIgnoreMutations } from "@/content/modules/feedGuard";
 
 function createCard(overrides: Partial<FeedCardModel>): FeedCardModel {
   return {
@@ -9,6 +9,7 @@ function createCard(overrides: Partial<FeedCardModel>): FeedCardModel {
     category: "",
     isAd: false,
     isLive: false,
+    feedback: null,
     element: document.createElement("div"),
     ...overrides
   };
@@ -84,79 +85,22 @@ describe("shouldIgnoreMutations", () => {
   });
 });
 
-describe("clickCardFeedbackAction", () => {
-  it("clicks a direct feedback button inside a card", async () => {
+describe("buildFeedbackTarget", () => {
+  it("extracts bvid and up mid from Bilibili homepage cards", () => {
     const card = document.createElement("div");
-    const button = document.createElement("button");
-    const clicked = vi.fn();
-    button.textContent = "不感兴趣";
-    button.getBoundingClientRect = () => ({ width: 10, height: 10 }) as DOMRect;
-    button.addEventListener("click", clicked);
-    card.appendChild(button);
-    document.body.appendChild(card);
+    card.innerHTML = `
+      <a class="bili-video-card__image--link" href="https://www.bilibili.com/video/BV1NzXoBBEdg" data-spmid="333.1007" data-mod="tianma.3-2-8"></a>
+      <a class="bili-video-card__info--owner" href="//space.bilibili.com/434043230">
+        <span class="bili-video-card__info--author">朱朱董事长</span>
+      </a>
+    `;
 
-    await expect(clickCardFeedbackAction(card, ["不感兴趣"])).resolves.toBe(true);
-    expect(clicked).toHaveBeenCalledTimes(1);
-  });
-
-  it("opens the card menu before clicking an overlay feedback button", async () => {
-    vi.useFakeTimers();
-
-    const card = document.createElement("div");
-    const trigger = document.createElement("button");
-    const menuItem = document.createElement("button");
-    const clicked = vi.fn();
-
-    trigger.title = "更多";
-    trigger.className = "more";
-    trigger.getBoundingClientRect = () => ({ width: 10, height: 10 }) as DOMRect;
-    trigger.addEventListener("click", () => {
-      document.body.appendChild(menuItem);
+    expect(buildFeedbackTarget(card, "测试标题", "朱朱董事长")).toMatchObject({
+      bvid: "BV1NzXoBBEdg",
+      id: null,
+      mid: 434043230,
+      goto: "av",
+      spmid: "333.1007"
     });
-
-    menuItem.textContent = "不想看此 UP 主";
-    menuItem.getBoundingClientRect = () => ({ width: 10, height: 10 }) as DOMRect;
-    menuItem.addEventListener("click", clicked);
-
-    card.appendChild(trigger);
-    document.body.appendChild(card);
-
-    const promise = clickCardFeedbackAction(card, ["不想看此 UP 主"]);
-    await vi.advanceTimersByTimeAsync(120);
-
-    await expect(promise).resolves.toBe(true);
-    expect(clicked).toHaveBeenCalledTimes(1);
-  });
-
-  it("clicks the hidden Bilibili homepage no-interest trigger when its result title matches", async () => {
-    vi.useFakeTimers();
-
-    const card = document.createElement("div");
-    const result = document.createElement("div");
-    const resultTitle = document.createElement("span");
-    const trigger = document.createElement("div");
-    const clicked = vi.fn();
-
-    result.className = "bili-video-card__no-interest";
-    result.style.display = "none";
-    resultTitle.className = "no-interest-title";
-    resultTitle.textContent = "不想看此UP主";
-    result.appendChild(resultTitle);
-
-    trigger.className = "bili-video-card__info--no-interest";
-    trigger.style.display = "none";
-    trigger.addEventListener("click", () => {
-      clicked();
-      result.style.display = "block";
-    });
-
-    card.append(result, trigger);
-    document.body.appendChild(card);
-
-    const promise = clickCardFeedbackAction(card, ["不想看此 UP 主"]);
-    await vi.advanceTimersByTimeAsync(120);
-
-    await expect(promise).resolves.toBe(true);
-    expect(clicked).toHaveBeenCalledTimes(1);
   });
 });

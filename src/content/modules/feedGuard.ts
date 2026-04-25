@@ -1,11 +1,12 @@
 import { classifyFeedPage } from "@/shared/url";
-import type { ExtensionConfig, FeedCardModel, FeedPageScope } from "@/shared/types";
+import type { ExtensionConfig, FeedCardModel, FeedFeedbackAction, FeedFeedbackPayload, FeedFeedbackTarget, FeedPageScope } from "@/shared/types";
 
 interface FeedGuardApp {
   config: ExtensionConfig;
   notifyFeedScan(result: { removedCount: number; scope: FeedPageScope | null }): void;
   log(message: string): void;
   sendFeedScanMetric(blockedCount: number): Promise<void>;
+  submitFeedFeedback(payload: FeedFeedbackPayload): Promise<{ ok: boolean; message: string }>;
 }
 
 const CARD_ROOT_SELECTORS = [
@@ -57,41 +58,9 @@ const LIVE_SELECTORS = [
   ".live-mark"
 ];
 
-const BILI_VIDEO_CARD_DISLIKE_TRIGGER_SELECTOR = ".bili-video-card__info--no-interest";
-const BILI_VIDEO_CARD_DISLIKE_RESULT_SELECTOR = ".bili-video-card__no-interest";
-const BILI_VIDEO_CARD_DISLIKE_RESULT_TITLE_SELECTOR = ".no-interest-title";
-
-const FEEDBACK_MENU_TRIGGER_SELECTORS = [
-  ".bili-video-card__info--more",
-  ".bili-feed-card__info--more",
-  ".bili-card-more",
-  ".bili-card__more",
-  ".more",
-  ".three-point",
-  "[class*='more']",
-  "[class*='dislike']",
-  "[class*='feedback']",
-  "[aria-label*='更多']",
-  "[title*='更多']",
-  "[aria-label*='不感兴趣']",
-  "[title*='不感兴趣']"
-];
-
-const FEEDBACK_CLICKABLE_SELECTORS = [
-  "button",
-  "a",
-  "[role='button']",
-  "[tabindex]",
-  ".bili-dropdown-item",
-  ".v-popover-content-item",
-  ".feed-card-dislike",
-  ".bili-video-card__info--no-interest",
-  "[class*='dislike']",
-  "[class*='feedback']"
-];
-
-const CONTENT_DISLIKE_TEXTS = ["不感兴趣", "减少此类内容", "内容不感兴趣"];
-const AUTHOR_DISLIKE_TEXTS = ["不想看此UP主", "不想看此 UP 主", "不看此UP", "不看此 UP", "不喜欢该UP主", "不喜欢该 UP 主"];
+const BVID_PATTERN = /\/video\/(BV[a-zA-Z0-9]+)/;
+const MID_PATTERN = /space\.bilibili\.com\/(\d+)/;
+const AID_PATTERN = /(?:^|[?&/])(?:aid|av)(\d+)(?:\D|$)/i;
 
 function isGuardianMutationTarget(node: Node | null): boolean {
   if (!(node instanceof Element)) {
@@ -124,137 +93,86 @@ function firstText(root: Element, selectors: string[]): string {
   return "";
 }
 
-function getElementLabel(element: Element): string {
-  return [
-    element.textContent,
-    element.getAttribute("aria-label"),
-    element.getAttribute("title"),
-    element.getAttribute("data-title")
-  ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-}
-
-function isVisible(element: Element): boolean {
-  const rect = element.getBoundingClientRect();
-  const style = window.getComputedStyle(element);
-  return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
-}
-
-function isDisplayed(element: Element): boolean {
-  const style = window.getComputedStyle(element);
-  return style.display !== "none" && style.visibility !== "hidden";
-}
-
-function matchesAnyText(element: Element, texts: string[]): boolean {
-  const label = getElementLabel(element).toLowerCase();
-  const compactLabel = label.replace(/\s+/g, "");
-  return texts.some((text) => {
-    const normalizedText = text.toLowerCase();
-    return label.includes(normalizedText) || compactLabel.includes(normalizedText.replace(/\s+/g, ""));
-  });
-}
-
-function findFeedbackButton(scope: ParentNode, texts: string[]): HTMLElement | null {
-  for (const selector of FEEDBACK_CLICKABLE_SELECTORS) {
-    for (const element of Array.from(scope.querySelectorAll<HTMLElement>(selector))) {
-      if (matchesAnyText(element, texts) && isVisible(element)) {
-        return element;
-      }
-    }
-  }
-
-  return null;
-}
-
-function clickElement(element: HTMLElement): void {
-  element.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-  element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-  element.click();
-}
-
-async function waitForFeedbackMenu(): Promise<void> {
-  await new Promise((resolve) => window.setTimeout(resolve, 120));
-}
-
-async function waitForBiliVideoCardFeedbackResult(card: HTMLElement, texts: string[]): Promise<boolean> {
-  for (let index = 0; index < 4; index += 1) {
-    await waitForFeedbackMenu();
-    const result = card.querySelector<HTMLElement>(BILI_VIDEO_CARD_DISLIKE_RESULT_SELECTOR);
-    const title = result?.querySelector<HTMLElement>(BILI_VIDEO_CARD_DISLIKE_RESULT_TITLE_SELECTOR);
-    if (result && isDisplayed(result) && title && matchesAnyText(title, texts)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-async function clickKnownBiliVideoCardDislikeAction(card: HTMLElement, texts: string[]): Promise<boolean> {
-  const resultTitle = card.querySelector<HTMLElement>(
-    `${BILI_VIDEO_CARD_DISLIKE_RESULT_SELECTOR} ${BILI_VIDEO_CARD_DISLIKE_RESULT_TITLE_SELECTOR}`
-  );
-  const trigger = card.querySelector<HTMLElement>(BILI_VIDEO_CARD_DISLIKE_TRIGGER_SELECTOR);
-
-  if (!trigger || !resultTitle || !matchesAnyText(resultTitle, texts)) {
-    return false;
-  }
-
-  clickElement(trigger);
-  return waitForBiliVideoCardFeedbackResult(card, texts);
-}
-
-function revealFeedbackMenu(card: HTMLElement): boolean {
-  card.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-  card.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-
-  for (const selector of FEEDBACK_MENU_TRIGGER_SELECTORS) {
-    const trigger = card.querySelector<HTMLElement>(selector);
-    if (trigger && isVisible(trigger)) {
-      clickElement(trigger);
-      return true;
-    }
-  }
-
-  return false;
-}
-
-export async function clickCardFeedbackAction(card: HTMLElement, texts: string[]): Promise<boolean> {
-  if (await clickKnownBiliVideoCardDislikeAction(card, texts)) {
-    return true;
-  }
-
-  const directButton = findFeedbackButton(card, texts);
-  if (directButton) {
-    clickElement(directButton);
-    return true;
-  }
-
-  if (!revealFeedbackMenu(card)) {
-    return false;
-  }
-
-  await waitForFeedbackMenu();
-
-  const cardButton = findFeedbackButton(card, texts);
-  if (cardButton) {
-    clickElement(cardButton);
-    return true;
-  }
-
-  const documentButton = findFeedbackButton(document, texts);
-  if (documentButton) {
-    clickElement(documentButton);
-    return true;
-  }
-
-  return false;
-}
-
 function uniqueCardRoots(): HTMLElement[] {
   const unique = new Set<HTMLElement>();
   for (const selector of CARD_ROOT_SELECTORS) {
     document.querySelectorAll<HTMLElement>(selector).forEach((element) => unique.add(element));
   }
   return [...unique];
+}
+
+function parseNumber(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function firstAttribute(root: Element, names: string[]): string {
+  for (const name of names) {
+    const direct = root.getAttribute(name);
+    if (direct) {
+      return direct;
+    }
+
+    const found = root.querySelector(`[${name}]`)?.getAttribute(name);
+    if (found) {
+      return found;
+    }
+  }
+
+  return "";
+}
+
+function firstHref(root: Element, selector: string): string {
+  return root.querySelector<HTMLAnchorElement>(selector)?.href || "";
+}
+
+function parseBvid(root: Element): string | null {
+  const href = firstHref(root, "a[href*='/video/BV']");
+  return href.match(BVID_PATTERN)?.[1] ?? null;
+}
+
+function parseAid(root: Element): number | null {
+  const explicit = parseNumber(firstAttribute(root, ["data-aid", "data-avid", "data-id"]));
+  if (explicit) {
+    return explicit;
+  }
+
+  const href = firstHref(root, "a[href*='/video/av'], a[href*='aid=']");
+  return parseNumber(href.match(AID_PATTERN)?.[1]);
+}
+
+function parseMid(root: Element): number | null {
+  const explicit = parseNumber(firstAttribute(root, ["data-mid", "data-up-mid", "data-author-mid"]));
+  if (explicit) {
+    return explicit;
+  }
+
+  const href = firstHref(root, "a[href*='space.bilibili.com']");
+  return parseNumber(href.match(MID_PATTERN)?.[1]);
+}
+
+export function buildFeedbackTarget(element: HTMLElement, title: string, author: string): FeedFeedbackTarget | null {
+  const bvid = parseBvid(element);
+  const id = parseAid(element);
+  if (!bvid && !id) {
+    return null;
+  }
+
+  return {
+    title,
+    author,
+    bvid,
+    id,
+    mid: parseMid(element),
+    goto: firstAttribute(element, ["data-goto", "data-card-goto"]) || "av",
+    trackId: firstAttribute(element, ["data-track-id", "data-trackid", "data-uniq-id"]),
+    spmid: firstAttribute(element, ["data-spmid"]) || "333.1007.0.0",
+    fromSpmid: new URLSearchParams(window.location.search).get("spm_id_from") || ""
+  };
 }
 
 function extractCards(): FeedCardModel[] {
@@ -270,6 +188,7 @@ function extractCards(): FeedCardModel[] {
       category,
       isAd: AD_SELECTORS.some((selector) => element.matches(selector) || Boolean(element.querySelector(selector))) || /广告|推广/.test(plainText),
       isLive: LIVE_SELECTORS.some((selector) => element.matches(selector) || Boolean(element.querySelector(selector))) || plainText.includes("正在直播"),
+      feedback: buildFeedbackTarget(element, title, author),
       element
     };
   });
@@ -395,18 +314,31 @@ export class FeedGuard {
   }
 
   private async performFeedbackActions(card: FeedCardModel): Promise<void> {
+    if (!card.feedback) {
+      this.app.log(`首页反馈跳过：无法从卡片提取 aid/bvid（${card.title || "无标题"}）`);
+      return;
+    }
+
     if (this.app.config.feed.autoDislikeContent) {
-      const clicked = await clickCardFeedbackAction(card.element, CONTENT_DISLIKE_TEXTS);
-      if (clicked) {
-        this.app.log("已尝试反馈：不感兴趣");
-      }
+      await this.submitFeedbackAction(card.feedback, "content");
     }
 
     if (this.app.config.feed.autoDislikeAuthor) {
-      const clicked = await clickCardFeedbackAction(card.element, AUTHOR_DISLIKE_TEXTS);
-      if (clicked) {
-        this.app.log("已尝试反馈：不想看此 UP 主");
-      }
+      await this.submitFeedbackAction(card.feedback, "author");
+    }
+  }
+
+  private async submitFeedbackAction(target: FeedFeedbackTarget, action: FeedFeedbackAction): Promise<void> {
+    const actionLabel = action === "content" ? "不感兴趣" : "不想看此 UP 主";
+    try {
+      const result = await this.app.submitFeedFeedback({
+        ...target,
+        action
+      });
+      this.app.log(`首页反馈成功：${actionLabel} / ${target.title || target.bvid || target.id} / ${result.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.app.log(`首页反馈失败：${actionLabel} / ${target.title || target.bvid || target.id} / ${message}`);
     }
   }
 }
