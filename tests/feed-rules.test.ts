@@ -226,4 +226,36 @@ describe("FeedGuard feedback submission", () => {
     expect(submitFeedFeedback).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalledWith(expect.stringContaining("首页反馈跳过"));
   });
+
+  it("silently skips feedback for non-video cards", () => {
+    document.body.innerHTML = `
+      <div class="floor-card-inner">
+        <a href="//manga.bilibili.com/detail/mc123">
+          <span class="title">被吃掉的到底是鸭子，还是我？</span>
+        </a>
+      </div>
+    `;
+
+    const submitFeedFeedback = vi.fn().mockResolvedValue({ ok: true, message: "OK" });
+    const log = vi.fn();
+    const guard = new FeedGuard({
+      config: {
+        ...DEFAULT_CONFIG,
+        feed: {
+          ...DEFAULT_CONFIG.feed,
+          keywordBlacklist: ["鸭子"],
+          autoDislikeContent: true
+        }
+      },
+      notifyFeedScan: vi.fn(),
+      log,
+      sendFeedScanMetric: vi.fn().mockResolvedValue(undefined),
+      submitFeedFeedback
+    });
+
+    void guard.mount(new URL("https://www.bilibili.com/"));
+
+    expect(submitFeedFeedback).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("首页反馈跳过"));
+  });
 });
