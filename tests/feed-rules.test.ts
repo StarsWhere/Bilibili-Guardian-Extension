@@ -104,6 +104,21 @@ describe("buildFeedbackTarget", () => {
       spmid: "333.1007"
     });
   });
+
+  it("extracts bvid from data-target-url and b23 short links", () => {
+    const dataTargetCard = document.createElement("div");
+    dataTargetCard.innerHTML = `
+      <a href="//cm.bilibili.com/cm/api/fees/pc/sync/v2" data-target-url="https://www.bilibili.com/video/BV1EhQPBuEYF?track_id=test"></a>
+    `;
+
+    const shortLinkCard = document.createElement("div");
+    shortLinkCard.innerHTML = `
+      <a href="https://b23.tv/BV1Xe91YREVN"></a>
+    `;
+
+    expect(buildFeedbackTarget(dataTargetCard, "推广卡", "")?.bvid).toBe("BV1EhQPBuEYF");
+    expect(buildFeedbackTarget(shortLinkCard, "短链卡", "")?.bvid).toBe("BV1Xe91YREVN");
+  });
 });
 
 describe("FeedGuard feedback submission", () => {
