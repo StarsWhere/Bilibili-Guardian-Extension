@@ -170,4 +170,45 @@ describe("FeedGuard feedback submission", () => {
     expect(submitFeedFeedback).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalledWith(expect.stringContaining("首页反馈跳过"));
   });
+
+  it("does not submit feedback for partition live cards", () => {
+    document.body.innerHTML = `
+      <div class="floor-card-inner">
+        <a href="//live.bilibili.com/2911989?hotRank=0&live_from=81003" data-spmid="333.1007">
+          <div class="badge">
+            <svg id="channel-icon-live"></svg>
+            <span class="floor-title">直播</span>
+          </div>
+        </a>
+        <p title="【全身冻补】可爱坏坏好兄弟" class="title">
+          <a href="//live.bilibili.com/2911989?hotRank=0&live_from=81003">
+            <div class="living"><span>直播中</span></div>
+            <span>【全身冻补】可爱坏坏好兄弟</span>
+          </a>
+        </p>
+      </div>
+    `;
+
+    const submitFeedFeedback = vi.fn().mockResolvedValue({ ok: true, message: "OK" });
+    const log = vi.fn();
+    const guard = new FeedGuard({
+      config: {
+        ...DEFAULT_CONFIG,
+        feed: {
+          ...DEFAULT_CONFIG.feed,
+          keywordBlacklist: ["全身冻补"],
+          autoDislikeContent: true
+        }
+      },
+      notifyFeedScan: vi.fn(),
+      log,
+      sendFeedScanMetric: vi.fn().mockResolvedValue(undefined),
+      submitFeedFeedback
+    });
+
+    void guard.mount(new URL("https://www.bilibili.com/"));
+
+    expect(submitFeedFeedback).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("首页反馈跳过"));
+  });
 });
