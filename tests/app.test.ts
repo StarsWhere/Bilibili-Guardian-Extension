@@ -8,6 +8,7 @@ function createServices(): GuardianPlatformServices {
     saveConfig: vi.fn().mockResolvedValue(DEFAULT_CONFIG),
     subscribeConfigChanges: vi.fn().mockReturnValue(() => {}),
     sendFeedScanMetric: vi.fn().mockResolvedValue(undefined),
+    submitFeedFeedback: vi.fn().mockResolvedValue({ ok: true, message: "0" }),
     getCachedVideoResult: vi.fn().mockResolvedValue(null),
     analyzeVideo: vi.fn().mockResolvedValue({
       probability: 0,

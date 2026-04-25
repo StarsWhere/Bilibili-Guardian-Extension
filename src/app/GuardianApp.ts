@@ -63,7 +63,8 @@ export class GuardianApp {
         }
       },
       log: (message) => this.log(message),
-      sendFeedScanMetric: (blockedCount) => this.services.sendFeedScanMetric(blockedCount)
+      sendFeedScanMetric: (blockedCount) => this.services.sendFeedScanMetric(blockedCount),
+      submitFeedFeedback: (payload) => this.services.submitFeedFeedback(payload)
     });
 
     this.videoGuard = new VideoGuard({

@@ -1,4 +1,5 @@
 import { createVideoAnalysisService } from "@/core/analysis";
+import { submitFeedFeedbackWithClient } from "@/core/feedFeedback";
 import { createGmHttpClient } from "@/core/http";
 import {
   CONFIG_STORAGE_KEY,
@@ -25,7 +26,8 @@ export function createUserscriptPlatformServices(): GuardianPlatformServices {
     throw new Error("当前脚本管理器没有提供 GM_xmlhttpRequest，请确认已在 Tampermonkey 中安装并授权脚本。");
   }
 
-  const analysisService = createVideoAnalysisService(createGmHttpClient(GM_xmlhttpRequest));
+  const httpClient = createGmHttpClient(GM_xmlhttpRequest);
+  const analysisService = createVideoAnalysisService(httpClient);
 
   return {
     loadConfig: () => loadConfigFromStore(gmStore),
@@ -50,6 +52,7 @@ export function createUserscriptPlatformServices(): GuardianPlatformServices {
     async sendFeedScanMetric() {
       return undefined;
     },
+    submitFeedFeedback: (payload) => submitFeedFeedbackWithClient(httpClient, payload),
     getCachedVideoResult: (bvid) => getCachedVideoResultFromStore(gmStore, bvid),
     analyzeVideo: async (payload) => {
       const config = await loadConfigFromStore(gmStore);

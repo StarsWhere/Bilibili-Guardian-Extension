@@ -1,5 +1,6 @@
 import { analyzeVideo, cancelAnalysisRequest } from "./analyze";
 import { getCachedVideoResult, setCachedVideoResult } from "./cache";
+import { submitFeedFeedback } from "./feedFeedback";
 import { fetchModels, ensureCustomOriginPermission } from "./providers";
 import { loadConfig, saveConfig } from "./storage";
 import { mergeConfig } from "@/shared/config";
@@ -43,6 +44,9 @@ const handlers: { [K in BackgroundMessageType]: Handler<K> } = {
       acknowledged: true,
       receivedAt: Date.now() + payload.blockedCount
     };
+  },
+  async SUBMIT_FEED_FEEDBACK(payload) {
+    return submitFeedFeedback(payload);
   },
   async ANALYZE_VIDEO(payload) {
     const config = await loadConfig();

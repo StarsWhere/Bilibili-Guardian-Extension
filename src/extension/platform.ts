@@ -22,6 +22,7 @@ export function createChromePlatformServices(): GuardianPlatformServices {
       return () => chrome.storage.onChanged.removeListener(handler);
     },
     sendFeedScanMetric: (blockedCount) => sendMessage("RUN_FEED_SCAN", { blockedCount }).then(() => undefined),
+    submitFeedFeedback: (payload) => sendMessage("SUBMIT_FEED_FEEDBACK", payload),
     getCachedVideoResult: (bvid) => sendMessage("GET_CACHED_VIDEO_RESULT", { bvid }),
     analyzeVideo: (payload) => sendMessage("ANALYZE_VIDEO", payload),
     cancelVideoAnalysis: async (requestId) => {
