@@ -64,9 +64,10 @@ const LIVE_SELECTORS = [
   "img[src*='live.gif']"
 ];
 
-const BVID_PATTERN = /\/video\/(BV[a-zA-Z0-9]+)/;
+const BVID_PATTERN = /(?:\/video\/|b23\.tv\/)(BV[a-zA-Z0-9]+)/;
 const MID_PATTERN = /space\.bilibili\.com\/(\d+)/;
 const AID_PATTERN = /(?:^|[?&/])(?:aid|av)(\d+)(?:\D|$)/i;
+const URL_ATTRIBUTE_NAMES = ["href", "data-target-url", "data-url", "data-uri"];
 
 function isGuardianMutationTarget(node: Node | null): boolean {
   if (!(node instanceof Element)) {
@@ -136,9 +137,24 @@ function firstHref(root: Element, selector: string): string {
   return root.querySelector<HTMLAnchorElement>(selector)?.href || "";
 }
 
+function findFirstUrlMatch(root: Element, pattern: RegExp): RegExpMatchArray | null {
+  const candidates: Element[] = [root, ...Array.from(root.querySelectorAll("[href], [data-target-url], [data-url], [data-uri]"))];
+
+  for (const candidate of candidates) {
+    for (const attributeName of URL_ATTRIBUTE_NAMES) {
+      const value = candidate.getAttribute(attributeName);
+      const matched = value?.match(pattern);
+      if (matched) {
+        return matched;
+      }
+    }
+  }
+
+  return null;
+}
+
 function parseBvid(root: Element): string | null {
-  const href = firstHref(root, "a[href*='/video/BV']");
-  return href.match(BVID_PATTERN)?.[1] ?? null;
+  return findFirstUrlMatch(root, BVID_PATTERN)?.[1] ?? null;
 }
 
 function parseAid(root: Element): number | null {
@@ -147,8 +163,7 @@ function parseAid(root: Element): number | null {
     return explicit;
   }
 
-  const href = firstHref(root, "a[href*='/video/av'], a[href*='aid=']");
-  return parseNumber(href.match(AID_PATTERN)?.[1]);
+  return parseNumber(findFirstUrlMatch(root, AID_PATTERN)?.[1]);
 }
 
 function parseMid(root: Element): number | null {
