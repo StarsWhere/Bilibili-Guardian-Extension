@@ -10,6 +10,7 @@ function createCard(overrides: Partial<FeedCardModel>): FeedCardModel {
     isAd: false,
     isLive: false,
     feedback: null,
+    feedbackUnsupportedReason: null,
     element: document.createElement("div"),
     ...overrides
   };
@@ -137,5 +138,36 @@ describe("FeedGuard feedback submission", () => {
     guard.runScan();
 
     expect(submitFeedFeedback).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not submit feedback for live cards", () => {
+    document.body.innerHTML = `
+      <div class="bili-video-card">
+        <span class="live-tag">直播</span>
+        <h3 class="bili-video-card__info--tit">直播中寝室姐妹 第一次直播</h3>
+      </div>
+    `;
+
+    const submitFeedFeedback = vi.fn().mockResolvedValue({ ok: true, message: "OK" });
+    const log = vi.fn();
+    const guard = new FeedGuard({
+      config: {
+        ...DEFAULT_CONFIG,
+        feed: {
+          ...DEFAULT_CONFIG.feed,
+          keywordBlacklist: ["直播中"],
+          autoDislikeContent: true
+        }
+      },
+      notifyFeedScan: vi.fn(),
+      log,
+      sendFeedScanMetric: vi.fn().mockResolvedValue(undefined),
+      submitFeedFeedback
+    });
+
+    void guard.mount(new URL("https://www.bilibili.com/"));
+
+    expect(submitFeedFeedback).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("首页反馈跳过"));
   });
 });
