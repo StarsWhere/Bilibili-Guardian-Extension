@@ -682,8 +682,19 @@ export class ControlCenter {
   }
 
   private renderButtonPosition(): void {
-    this.button.style.left = `${this.config.ui.floatingButtonPosition.x}px`;
-    this.button.style.top = `${this.config.ui.floatingButtonPosition.y}px`;
+    const position = this.config.ui.floatingButtonPosition;
+    const safePosition = clampButtonPosition(
+      {
+        x: Number.isFinite(position.x) ? position.x : 24,
+        y: Number.isFinite(position.y) ? position.y : 96
+      },
+      { width: window.innerWidth, height: window.innerHeight },
+      44
+    );
+
+    this.config.ui.floatingButtonPosition = safePosition;
+    this.button.style.left = `${safePosition.x}px`;
+    this.button.style.top = `${safePosition.y}px`;
   }
 
   private renderVideoQuickCard(): void {

@@ -56,21 +56,23 @@ export function createStyles(): string {
     }
 
     .guardian-floating-btn {
-      position: fixed;
+      position: fixed !important;
       width: 44px;
       height: 44px;
       border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.42);
       background: #111820;
       box-shadow: 0 10px 28px rgba(10, 20, 30, 0.24);
-      z-index: 2147483642;
+      z-index: 2147483647 !important;
       cursor: grab;
-      display: flex;
+      display: flex !important;
       align-items: center;
       justify-content: center;
       color: #ffffff;
       user-select: none;
-      opacity: 0.48;
+      opacity: 0.82;
+      visibility: visible !important;
+      pointer-events: auto;
       transition: opacity 160ms ease, transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
     }
 
@@ -82,7 +84,7 @@ export function createStyles(): string {
     .guardian-floating-btn:hover,
     .guardian-floating-btn:focus-visible,
     .guardian-floating-btn.dragging {
-      opacity: 0.96;
+      opacity: 1;
       transform: translateY(-1px);
       box-shadow: 0 14px 34px rgba(10, 20, 30, 0.3);
       outline: none;
