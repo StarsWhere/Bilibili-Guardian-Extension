@@ -651,4 +651,43 @@ describe("ControlCenter advanced settings", () => {
     expect(items).toContain("识别服务 已准备好");
     expect(document.querySelector(".guardian-overview-meta")?.textContent).not.toContain("当前页面暂不在首页整理范围内");
   });
+
+  it("keeps the floating entry visible when a stored position is outside the viewport", () => {
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 240 });
+
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        floatingButtonPosition: {
+          x: 9999,
+          y: 9999
+        }
+      }
+    };
+
+    const controlCenter = new ControlCenter(config, createRuntime(), {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig: vi.fn().mockResolvedValue(undefined),
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    const entry = document.querySelector<HTMLElement>(".guardian-floating-btn");
+    expect(entry?.style.left).toBe("268px");
+    expect(entry?.style.top).toBe("188px");
+
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight });
+  });
 });
