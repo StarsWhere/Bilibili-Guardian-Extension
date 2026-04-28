@@ -380,17 +380,17 @@ describe("ControlCenter advanced settings", () => {
     document.querySelector<HTMLElement>("[data-action='video-quick-primary']")?.click();
     expect(onRunVideoAnalysis).toHaveBeenCalledTimes(1);
 
+    const checkbox = document.querySelector<HTMLInputElement>("[data-action='video-quick-toggle-skip']");
+    checkbox!.checked = false;
+    checkbox!.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(onToggleCurrentVideoAutoSkip).toHaveBeenCalledWith(false);
+
     document.querySelector<HTMLElement>("[data-action='video-quick-open-settings']")?.click();
     await flushPromises();
 
     expect(onTogglePanel).toHaveBeenCalledTimes(1);
     expect(onSaveConfig).not.toHaveBeenCalled();
     expect(document.querySelector(".guardian-tab.active")?.textContent).toContain("视频跳过");
-
-    const checkbox = document.querySelector<HTMLInputElement>("[data-action='video-quick-toggle-skip']");
-    checkbox!.checked = false;
-    checkbox!.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(onToggleCurrentVideoAutoSkip).toHaveBeenCalledWith(false);
   });
 
   it("shows the collecting state without reusing the previous result and disables rerun actions", () => {
@@ -436,14 +436,12 @@ describe("ControlCenter advanced settings", () => {
 
     controlCenter.mount();
 
-    const quickPrimary = document.querySelector<HTMLElement>("[data-action='video-quick-primary']");
     const panelRunButton = document.querySelector<HTMLElement>("[data-action='run-video']");
 
-    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.textContent).toContain("识别中");
-    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.textContent).toContain("正在整理当前视频的弹幕和评论，请稍等。");
-    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.textContent).not.toContain("旧结果不应该继续显示。");
-    expect(quickPrimary?.textContent).toContain("识别中");
-    expect(quickPrimary?.hasAttribute("disabled")).toBe(true);
+    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")).toBeNull();
+    expect(document.querySelector<HTMLElement>(".guardian-video-quick-card")?.classList.contains("visible")).toBe(false);
+    expect(document.querySelector<HTMLElement>(".guardian-modal")?.textContent).toContain("正在整理当前视频的弹幕和评论，请稍等。");
+    expect(document.querySelector<HTMLElement>(".guardian-modal")?.textContent).not.toContain("旧结果不应该继续显示。");
     expect(panelRunButton?.textContent).toContain("正在识别当前视频");
     expect(panelRunButton?.hasAttribute("disabled")).toBe(true);
   });
@@ -557,6 +555,46 @@ describe("ControlCenter advanced settings", () => {
     expect(document.querySelector(".guardian-video-quick-card")).toBe(quickCardHost);
     expect(toast?.textContent).toContain("处理中");
     expect(document.querySelector(".guardian-edge-toast-dismiss")).toBeNull();
+  });
+
+  it("moves toasts inside the side panel and hides the quick card while the panel is open", () => {
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: true,
+        activeTab: "overview"
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        apiKey: "token"
+      }
+    };
+
+    const runtime = createRuntime();
+    runtime.route = "video";
+    runtime.videoBvid = "BV1panel";
+    runtime.videoPhase = "ready";
+
+    const controlCenter = new ControlCenter(config, runtime, {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig: vi.fn().mockResolvedValue(undefined),
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+    controlCenter.showEdgeToast("面板内通知", "warning", { durationMs: 0 });
+
+    expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")).toBeNull();
+    expect(document.querySelector<HTMLElement>(".guardian-video-quick-card")?.classList.contains("visible")).toBe(false);
+    expect(document.querySelector<HTMLElement>(".guardian-panel-toast-region .guardian-edge-toast")?.textContent).toContain("面板内通知");
+    expect(document.querySelector<HTMLElement>(".guardian-edge-toast-region .guardian-edge-toast")).toBeNull();
   });
 
   it("switches tabs locally and resets to overview after closing and reopening", async () => {
