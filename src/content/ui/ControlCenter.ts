@@ -251,6 +251,7 @@ export class ControlCenter {
   private readonly button: HTMLButtonElement;
   private readonly miniCard: HTMLDivElement;
   private readonly toastRegion: HTMLDivElement;
+  private readonly panelToastRegion: HTMLDivElement;
   private readonly overlay: HTMLDivElement;
   private readonly panel: HTMLDivElement;
   private readonly panelHeader: HTMLDivElement;
@@ -290,6 +291,8 @@ export class ControlCenter {
     this.miniCard.className = "guardian-video-quick-card";
     this.toastRegion = document.createElement("div");
     this.toastRegion.className = "guardian-edge-toast-region";
+    this.panelToastRegion = document.createElement("div");
+    this.panelToastRegion.className = "guardian-panel-toast-region";
     this.overlay = document.createElement("div");
     this.overlay.className = "guardian-overlay";
     this.panel = document.createElement("div");
@@ -308,7 +311,7 @@ export class ControlCenter {
   }
 
   mount(): void {
-    this.panel.append(this.panelHeader, this.panelTabs, this.panelBody, this.panelFooter);
+    this.panel.append(this.panelHeader, this.panelTabs, this.panelToastRegion, this.panelBody, this.panelFooter);
     this.overlay.appendChild(this.panel);
     this.root.append(this.style, this.button, this.miniCard, this.toastRegion, this.overlay);
     document.body.appendChild(this.root);
@@ -413,6 +416,10 @@ export class ControlCenter {
     });
 
     this.toastRegion.addEventListener("click", (event) => {
+      this.handleToastClick(event);
+    });
+
+    this.panelToastRegion.addEventListener("click", (event) => {
       this.handleToastClick(event);
     });
 
@@ -599,6 +606,7 @@ export class ControlCenter {
     }
 
     document.body.dataset.guardianTheme = this.config.ui.theme;
+    this.root.dataset.panelOpen = String(isOpen);
     this.renderButton();
     this.renderVideoQuickCard();
     this.renderEdgeToasts();
@@ -698,7 +706,7 @@ export class ControlCenter {
   }
 
   private renderVideoQuickCard(): void {
-    if (this.runtime.route !== "video") {
+    if (this.runtime.route !== "video" || this.config.ui.panelOpen) {
       this.miniCard.classList.remove("visible", "collapsed");
       this.miniCard.innerHTML = "";
       return;
@@ -1930,7 +1938,9 @@ export class ControlCenter {
   }
 
   private renderEdgeToasts(): void {
-    this.toastRegion.innerHTML = this.edgeToasts
+    const activeRegion = this.config.ui.panelOpen ? this.panelToastRegion : this.toastRegion;
+    const inactiveRegion = this.config.ui.panelOpen ? this.toastRegion : this.panelToastRegion;
+    const toastMarkup = this.edgeToasts
       .map((toast) => `
         <section class="guardian-edge-toast ${toast.tone}" data-toast-id="${toast.id}" role="status" aria-live="polite">
           <div class="guardian-edge-toast-head">
@@ -1946,7 +1956,10 @@ export class ControlCenter {
       `)
       .join("");
 
-    this.toastRegion.classList.toggle("visible", this.edgeToasts.length > 0);
+    inactiveRegion.innerHTML = "";
+    inactiveRegion.classList.remove("visible");
+    activeRegion.innerHTML = toastMarkup;
+    activeRegion.classList.toggle("visible", this.edgeToasts.length > 0);
   }
 
   private dismissEdgeToast(id: number): void {

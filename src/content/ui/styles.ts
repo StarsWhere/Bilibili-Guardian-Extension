@@ -1015,6 +1015,18 @@ export function createStyles(): string {
       display: grid;
     }
 
+    .guardian-panel-toast-region {
+      display: none;
+      padding: 10px 12px 0;
+      background: var(--guardian-bg);
+      gap: 8px;
+      border-bottom: 0;
+    }
+
+    .guardian-panel-toast-region.visible {
+      display: grid;
+    }
+
     .guardian-edge-toast {
       display: grid;
       gap: 7px;
@@ -1025,6 +1037,10 @@ export function createStyles(): string {
       background: var(--guardian-surface);
       box-shadow: 0 12px 32px rgba(10, 20, 30, 0.18);
       animation: guardianFadeIn 160ms ease;
+    }
+
+    .guardian-panel-toast-region .guardian-edge-toast {
+      box-shadow: none;
     }
 
     .guardian-edge-toast.info {
