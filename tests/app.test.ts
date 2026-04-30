@@ -21,6 +21,7 @@ function createServices(): GuardianPlatformServices {
       danmakuCount: 0
     }),
     cancelVideoAnalysis: vi.fn().mockResolvedValue(false),
+    setVideoRangeDisabled: vi.fn().mockResolvedValue(null),
     fetchModels: vi.fn().mockResolvedValue([])
   };
 }

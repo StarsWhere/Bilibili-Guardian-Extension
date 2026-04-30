@@ -2,6 +2,7 @@ import {
   getCachedVideoResultFromStore,
   loadConfigFromStore,
   saveConfigToStore,
+  setVideoRangeDisabledInStore,
   setCachedVideoResultInStore,
   type KeyValueStore
 } from "@/core/storage";
@@ -54,5 +55,39 @@ describe("shared storage helpers", () => {
     expect(cached?.cacheHit).toBe(true);
     expect(cached?.source).toBe("cache");
     expect(cached?.note).toBe("命中缓存测试");
+  });
+
+  it("stores disabled range ids with page-scoped video cache entries", async () => {
+    const store = createMemoryStore();
+
+    await setCachedVideoResultInStore(store, "BV1test", {
+      probability: 90,
+      finalProbability: 90,
+      start: "00:10",
+      end: "00:40",
+      note: "多段缓存测试",
+      method: "subtitle",
+      ranges: [
+        {
+          id: "subtitle-1",
+          start: "00:10",
+          end: "00:40",
+          probability: 90,
+          finalProbability: 90,
+          note: "片头广告"
+        }
+      ],
+      disabledRangeIds: [],
+      source: "live",
+      cacheHit: false,
+      danmakuCount: 0,
+      subtitleCueCount: 2
+    }, 10, 2);
+
+    const updated = await setVideoRangeDisabledInStore(store, "BV1test", "subtitle-1", true, 2);
+
+    expect(updated?.disabledRangeIds).toContain("subtitle-1");
+    expect((await getCachedVideoResultFromStore(store, "BV1test", 1))).toBeNull();
+    expect((await getCachedVideoResultFromStore(store, "BV1test", 2))?.disabledRangeIds).toContain("subtitle-1");
   });
 });

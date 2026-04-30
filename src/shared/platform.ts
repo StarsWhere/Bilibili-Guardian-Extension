@@ -14,8 +14,9 @@ export interface GuardianPlatformServices {
   subscribeConfigChanges(listener: (config: ExtensionConfig) => void): () => void;
   sendFeedScanMetric(blockedCount: number): Promise<void>;
   submitFeedFeedback(payload: FeedFeedbackPayload): Promise<FeedFeedbackResult>;
-  getCachedVideoResult(bvid: string): Promise<VideoAnalysisResult | null>;
+  getCachedVideoResult(bvid: string, pageIndex?: number): Promise<VideoAnalysisResult | null>;
   analyzeVideo(payload: BackgroundAnalyzeVideoPayload): Promise<VideoAnalysisResult>;
   cancelVideoAnalysis(requestId: string): Promise<boolean>;
+  setVideoRangeDisabled(bvid: string, rangeId: string, disabled: boolean, pageIndex?: number): Promise<VideoAnalysisResult | null>;
   fetchModels(provider: AIProvider, baseUrl: string): Promise<string[]>;
 }

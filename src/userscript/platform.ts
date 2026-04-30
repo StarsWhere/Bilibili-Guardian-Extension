@@ -7,6 +7,7 @@ import {
   loadConfigFromStore,
   saveConfigToStore,
   setCachedVideoResultInStore,
+  setVideoRangeDisabledInStore,
   type KeyValueStore
 } from "@/core/storage";
 import type { GuardianPlatformServices } from "@/shared/platform";
@@ -53,21 +54,24 @@ export function createUserscriptPlatformServices(): GuardianPlatformServices {
       return undefined;
     },
     submitFeedFeedback: (payload) => submitFeedFeedbackWithClient(httpClient, payload),
-    getCachedVideoResult: (bvid) => getCachedVideoResultFromStore(gmStore, bvid),
+    getCachedVideoResult: (bvid, pageIndex) => getCachedVideoResultFromStore(gmStore, bvid, pageIndex),
     analyzeVideo: async (payload) => {
       const config = await loadConfigFromStore(gmStore);
-      const cached = await getCachedVideoResultFromStore(gmStore, payload.bvid);
+      const pageIndex = payload.pageIndex ?? 1;
+      const cached = await getCachedVideoResultFromStore(gmStore, payload.bvid, pageIndex);
       if (!payload.force && cached) {
         return cached;
       }
 
       const result = await analysisService.analyzeVideo(payload, config);
-      await setCachedVideoResultInStore(gmStore, payload.bvid, result, config.video.cacheTtlMinutes);
+      await setCachedVideoResultInStore(gmStore, payload.bvid, result, config.video.cacheTtlMinutes, pageIndex);
       return result;
     },
     async cancelVideoAnalysis(requestId) {
       return analysisService.cancelAnalysisRequest(requestId);
     },
+    setVideoRangeDisabled: (bvid, rangeId, disabled, pageIndex) =>
+      setVideoRangeDisabledInStore(gmStore, bvid, rangeId, disabled, pageIndex),
     fetchModels: async (provider, baseUrl) => {
       const config = await loadConfigFromStore(gmStore);
       return analysisService.fetchModels(provider, {

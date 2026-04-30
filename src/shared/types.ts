@@ -222,6 +222,16 @@ export interface BackgroundMessageMap {
   GET_CACHED_VIDEO_RESULT: {
     request: {
       bvid: string;
+      pageIndex?: number;
+    };
+    response: VideoAnalysisResult | null;
+  };
+  SET_VIDEO_RANGE_DISABLED: {
+    request: {
+      bvid: string;
+      pageIndex?: number;
+      rangeId: string;
+      disabled: boolean;
     };
     response: VideoAnalysisResult | null;
   };

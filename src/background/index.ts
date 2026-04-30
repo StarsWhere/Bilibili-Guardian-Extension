@@ -1,5 +1,5 @@
 import { analyzeVideo, cancelAnalysisRequest } from "./analyze";
-import { getCachedVideoResult, setCachedVideoResult } from "./cache";
+import { getCachedVideoResult, setCachedVideoResult, setVideoRangeDisabled } from "./cache";
 import { submitFeedFeedback } from "./feedFeedback";
 import { fetchModels, ensureCustomOriginPermission } from "./providers";
 import { loadConfig, saveConfig } from "./storage";
@@ -50,15 +50,16 @@ const handlers: { [K in BackgroundMessageType]: Handler<K> } = {
   },
   async ANALYZE_VIDEO(payload) {
     const config = await loadConfig();
+    const pageIndex = payload.pageIndex ?? 1;
     if (!payload.force) {
-      const cached = await getCachedVideoResult(payload.bvid);
+      const cached = await getCachedVideoResult(payload.bvid, pageIndex);
       if (cached) {
         return cached;
       }
     }
 
     const result = await analyzeVideo(payload, config);
-    await setCachedVideoResult(payload.bvid, result, config.video.cacheTtlMinutes);
+    await setCachedVideoResult(payload.bvid, result, config.video.cacheTtlMinutes, pageIndex);
     return result;
   },
   async CANCEL_VIDEO_ANALYSIS(payload) {
@@ -77,7 +78,10 @@ const handlers: { [K in BackgroundMessageType]: Handler<K> } = {
     return fetchModels(payload.provider, updatedConfig);
   },
   async GET_CACHED_VIDEO_RESULT(payload) {
-    return getCachedVideoResult(payload.bvid);
+    return getCachedVideoResult(payload.bvid, payload.pageIndex ?? 1);
+  },
+  async SET_VIDEO_RANGE_DISABLED(payload) {
+    return setVideoRangeDisabled(payload.bvid, payload.rangeId, payload.disabled, payload.pageIndex ?? 1);
   }
 };
 

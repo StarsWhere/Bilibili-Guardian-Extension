@@ -23,12 +23,14 @@ export function createChromePlatformServices(): GuardianPlatformServices {
     },
     sendFeedScanMetric: (blockedCount) => sendMessage("RUN_FEED_SCAN", { blockedCount }).then(() => undefined),
     submitFeedFeedback: (payload) => sendMessage("SUBMIT_FEED_FEEDBACK", payload),
-    getCachedVideoResult: (bvid) => sendMessage("GET_CACHED_VIDEO_RESULT", { bvid }),
+    getCachedVideoResult: (bvid, pageIndex) => sendMessage("GET_CACHED_VIDEO_RESULT", { bvid, pageIndex }),
     analyzeVideo: (payload) => sendMessage("ANALYZE_VIDEO", payload),
     cancelVideoAnalysis: async (requestId) => {
       const result = await sendMessage("CANCEL_VIDEO_ANALYSIS", { requestId });
       return result.cancelled;
     },
+    setVideoRangeDisabled: (bvid, rangeId, disabled, pageIndex) =>
+      sendMessage("SET_VIDEO_RANGE_DISABLED", { bvid, rangeId, disabled, pageIndex }),
     fetchModels: (provider, baseUrl) => sendMessage("FETCH_MODELS", { provider, baseUrl })
   };
 }
