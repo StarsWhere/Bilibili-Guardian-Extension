@@ -22,3 +22,4 @@ tmp/
 temp/
 .env
 images
+thesis/.pylib
