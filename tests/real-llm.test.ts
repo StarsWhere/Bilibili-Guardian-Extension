@@ -102,6 +102,11 @@ function createHybridClient(): HttpClient {
 function createRealLlmConfig(): ExtensionConfig {
   return {
     ...DEFAULT_CONFIG,
+    video: {
+      ...DEFAULT_CONFIG.video,
+      subtitleAnalysisEnabled: false,
+      danmakuAnalysisEnabled: true
+    },
     ai: {
       ...DEFAULT_CONFIG.ai,
       provider: env.provider,

@@ -1,17 +1,28 @@
-import { fetchCidByBvid, fetchDanmakuXml, parseDanmakuXml } from "./bilibili";
+import {
+  fetchCidByBvid,
+  fetchDanmakuXml,
+  fetchSubtitleJson,
+  fetchSubtitleTracks,
+  fetchVideoInfoByBvid,
+  parseDanmakuXml,
+  selectBestSubtitleTrack,
+  type BilibiliSubtitleCue
+} from "./bilibili";
 import type { HttpClient } from "./http";
 import { fetchModelsWithClient, getProviderBaseUrl, type EnsureOriginAccess } from "./providers";
 import { getCustomBaseUrlValidationError } from "@/shared/config";
 import { createErrorWithDetails } from "@/shared/errors";
-import { clamp, normalizeAdRange, secondsToTimeString, timeStringToSeconds } from "@/shared/time";
+import { clamp, isValidTimeString, normalizeAdRange, secondsToTimeString, timeStringToSeconds } from "@/shared/time";
 import type {
   AIProvider,
   BackgroundAnalyzeVideoPayload,
   ExtensionConfig,
+  VideoAdRange,
   VideoAnalysisErrorDetails,
   VideoAnalysisFailureCode,
   VideoAnalysisResult
 } from "@/shared/types";
+import { createRangeId, normalizeVideoAnalysisResult } from "@/shared/videoResult";
 
 const SIMPLE_AD_KEYWORDS = ["广告", "推广", "赞助", "恰饭", "感谢金主", "商务合作"];
 const RESPONSE_PREVIEW_LIMIT = 800;
@@ -23,6 +34,20 @@ interface AiResultShape {
   end: string | null;
   note: string;
 }
+
+interface AiRangeShape {
+  probability: number;
+  start: string;
+  end: string;
+  note: string;
+}
+
+interface AiSubtitleResultShape {
+  ranges: AiRangeShape[];
+  note: string;
+}
+
+type AnalysisMethod = "danmaku" | "subtitle";
 
 export interface ParseAiResponseContext {
   provider: AIProvider;
@@ -133,6 +158,37 @@ function filterDanmakuText(xml: string, config: ExtensionConfig): { text: string
       .join("\n"),
     count: filtered.length
   };
+}
+
+function subtitleCuesToTimedText(cues: BilibiliSubtitleCue[], config: ExtensionConfig): { text: string; count: number } {
+  const safeLimit = Math.max(1, config.video.maxSubtitleCueCount);
+  const selected = cues.slice(0, safeLimit);
+  return {
+    text: selected
+      .map((cue) => `${secondsToTimeString(cue.from)} --> ${secondsToTimeString(cue.to)}  ${cue.content.replace(/\s+/g, " ").trim()}`)
+      .join("\n"),
+    count: selected.length
+  };
+}
+
+function getPageCid(info: Awaited<ReturnType<typeof fetchVideoInfoByBvid>>, pageIndex: number): number {
+  return info.pages[pageIndex - 1]?.cid ?? info.cid;
+}
+
+function createNoAnalysisResult(note: string, method: VideoAnalysisResult["method"] = "none"): VideoAnalysisResult {
+  return normalizeVideoAnalysisResult({
+    probability: 0,
+    finalProbability: 0,
+    start: null,
+    end: null,
+    note,
+    method,
+    ranges: [],
+    disabledRangeIds: [],
+    source: "live",
+    cacheHit: false,
+    danmakuCount: 0
+  });
 }
 
 function buildResponsePreview(input: string): string {
@@ -653,7 +709,7 @@ function shouldPreferStructuredGpt5Flow(provider: AIProvider, model: string): bo
   return /^gpt-5(\.|-|$)/i.test(model.trim());
 }
 
-function buildVideoAnalysisJsonSchema(): JsonSchemaEnvelope {
+function buildDanmakuVideoAnalysisJsonSchema(): JsonSchemaEnvelope {
   return {
     name: "video_analysis_result",
     strict: true,
@@ -681,7 +737,48 @@ function buildVideoAnalysisJsonSchema(): JsonSchemaEnvelope {
   };
 }
 
-function buildOpenAiResponsesStructuredRequest(model: string, instructions: string, input: string): string {
+function buildSubtitleVideoAnalysisJsonSchema(): JsonSchemaEnvelope {
+  return {
+    name: "video_subtitle_analysis_result",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["ranges", "note"],
+      properties: {
+        ranges: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["probability", "start", "end", "note"],
+            properties: {
+              probability: {
+                type: "integer",
+                minimum: 0,
+                maximum: 100
+              },
+              start: {
+                type: "string"
+              },
+              end: {
+                type: "string"
+              },
+              note: {
+                type: "string"
+              }
+            }
+          }
+        },
+        note: {
+          type: "string"
+        }
+      }
+    }
+  };
+}
+
+function buildOpenAiResponsesStructuredRequest(model: string, instructions: string, input: string, schema: JsonSchemaEnvelope): string {
   return JSON.stringify({
     model,
     instructions,
@@ -695,13 +792,13 @@ function buildOpenAiResponsesStructuredRequest(model: string, instructions: stri
       verbosity: "low",
       format: {
         type: "json_schema",
-        ...buildVideoAnalysisJsonSchema()
+        ...schema
       }
     }
   });
 }
 
-function buildOpenAiChatStructuredRequest(model: string, systemPrompt: string, userContent: string): string {
+function buildOpenAiChatStructuredRequest(model: string, systemPrompt: string, userContent: string, schema: JsonSchemaEnvelope): string {
   return JSON.stringify({
     model,
     temperature: 0.2,
@@ -711,7 +808,7 @@ function buildOpenAiChatStructuredRequest(model: string, systemPrompt: string, u
     ],
     response_format: {
       type: "json_schema",
-      json_schema: buildVideoAnalysisJsonSchema()
+      json_schema: schema
     }
   });
 }
@@ -727,7 +824,7 @@ function buildOpenAiChatPromptRequest(model: string, systemPrompt: string, userC
   });
 }
 
-function buildOpenAiResponsesStructuredStreamRequest(model: string, instructions: string, input: string): string {
+function buildOpenAiResponsesStructuredStreamRequest(model: string, instructions: string, input: string, schema: JsonSchemaEnvelope): string {
   return JSON.stringify({
     model,
     instructions,
@@ -741,14 +838,14 @@ function buildOpenAiResponsesStructuredStreamRequest(model: string, instructions
       verbosity: "low",
       format: {
         type: "json_schema",
-        ...buildVideoAnalysisJsonSchema()
+        ...schema
       }
     },
     stream: true
   });
 }
 
-function buildOpenAiChatStructuredStreamRequest(model: string, systemPrompt: string, userContent: string): string {
+function buildOpenAiChatStructuredStreamRequest(model: string, systemPrompt: string, userContent: string, schema: JsonSchemaEnvelope): string {
   return JSON.stringify({
     model,
     temperature: 0.2,
@@ -758,7 +855,7 @@ function buildOpenAiChatStructuredStreamRequest(model: string, systemPrompt: str
     ],
     response_format: {
       type: "json_schema",
-      json_schema: buildVideoAnalysisJsonSchema()
+      json_schema: schema
     },
     stream: true
   });
@@ -964,41 +1061,212 @@ export function parseAiResponse(raw: string, context: ParseAiResponseContext): A
   }
 }
 
-function calculateFinalProbability(result: AiResultShape, config: ExtensionConfig): VideoAnalysisResult {
-  const baseProbability = clamp(Math.round(result.probability), 0, 100);
-  let finalProbability = baseProbability;
-  let start = result.start;
-  let end = result.end;
+function validateSubtitleResultShape(parsed: unknown, rawResponse: string, context: ParseAiResponseContext): AiSubtitleResultShape {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw createParseError(
+      "invalid_result_shape",
+      "AI 返回的字幕 JSON 结构不符合预期",
+      rawResponse,
+      context,
+      "最外层返回值必须是一个 JSON 对象。"
+    );
+  }
 
-  const normalizedRange = normalizeAdRange(start, end, config.video.minAdDuration);
-  start = normalizedRange.start;
-  end = normalizedRange.end;
+  const candidate = parsed as Record<string, unknown>;
+  if (!Array.isArray(candidate.ranges)) {
+    throw createParseError(
+      "invalid_result_shape",
+      "AI 返回的字幕 JSON 缺少 ranges 数组",
+      rawResponse,
+      context,
+      "必须包含 ranges 数组字段。"
+    );
+  }
 
-  if (start && end) {
-    const duration = timeStringToSeconds(end) - timeStringToSeconds(start);
-    if (duration > config.video.maxAdDuration) {
-      const overflowMinutes = (duration - config.video.maxAdDuration) / 60;
-      finalProbability -= overflowMinutes * config.video.durationPenalty;
+  const ranges: AiRangeShape[] = [];
+  for (const [index, item] of candidate.ranges.entries()) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw createParseError(
+        "invalid_result_shape",
+        "AI 返回的字幕区间结构不符合预期",
+        rawResponse,
+        context,
+        `ranges[${index}] 必须是一个 JSON 对象。`
+      );
     }
+
+    const range = item as Record<string, unknown>;
+    const probability = normalizeProbability(range.probability);
+    const start = normalizeNullableString(range.start);
+    const end = normalizeNullableString(range.end);
+    const note = typeof range.note === "string" ? range.note.trim() : undefined;
+    if (probability === null || start === undefined || start === null || end === undefined || end === null || note === undefined) {
+      throw createParseError(
+        "invalid_result_shape",
+        "AI 返回的字幕区间字段类型不正确",
+        rawResponse,
+        context,
+        `ranges[${index}] 必须包含 probability、start、end、note，且 start/end/note 必须是字符串。`
+      );
+    }
+
+    ranges.push({
+      probability,
+      start,
+      end,
+      note
+    });
   }
 
   return {
-    probability: baseProbability,
-    finalProbability: clamp(Math.round(finalProbability), 0, 100),
+    ranges,
+    note: typeof candidate.note === "string" ? candidate.note.trim() : ""
+  };
+}
+
+export function parseSubtitleAiResponse(raw: string, context: ParseAiResponseContext): AiSubtitleResultShape {
+  const normalized = raw.trim();
+  if (!normalized) {
+    throw createParseError(
+      "empty_response",
+      "AI 返回为空，请检查当前模型或接口是否正常工作",
+      raw,
+      context,
+      `响应内容为空字符串。当前读取来源：${context.responseSource || "response_text"}。`
+    );
+  }
+
+  const text = unwrapMarkdownCodeFence(normalized);
+  const jsonBlock = extractBalancedJsonObject(text);
+  if (!jsonBlock) {
+    throw createParseError(
+      "no_json_found",
+      "AI 返回中没有找到可解析的 JSON 对象",
+      raw,
+      context,
+      `未在响应中找到成对平衡的 JSON 对象。当前读取来源：${context.responseSource || "response_text"}。`
+    );
+  }
+
+  try {
+    const parsed = JSON.parse(jsonBlock) as unknown;
+    return validateSubtitleResultShape(parsed, raw, context);
+  } catch (error) {
+    if (error instanceof Error && "details" in error) {
+      throw error;
+    }
+
+    throw createParseError(
+      "invalid_json",
+      "AI 返回内容不是有效的 JSON",
+      raw,
+      context,
+      error instanceof Error ? error.message : "JSON.parse 失败"
+    );
+  }
+}
+
+function calculateRangeFinalProbability(
+  range: AiRangeShape,
+  config: ExtensionConfig,
+  method: AnalysisMethod,
+  index: number
+): VideoAdRange | null {
+  if (!isValidTimeString(range.start) || !isValidTimeString(range.end)) {
+    return null;
+  }
+
+  let start = range.start;
+  let end = range.end;
+  const normalizedRange = normalizeAdRange(start, end, config.video.minAdDuration);
+  if (!normalizedRange.start || !normalizedRange.end || !isValidTimeString(normalizedRange.start) || !isValidTimeString(normalizedRange.end)) {
+    return null;
+  }
+
+  start = normalizedRange.start;
+  end = normalizedRange.end;
+
+  const baseProbability = clamp(Math.round(range.probability), 0, 100);
+  let finalProbability = baseProbability;
+  const duration = timeStringToSeconds(end) - timeStringToSeconds(start);
+  if (duration <= 0) {
+    return null;
+  }
+
+  if (duration > config.video.maxAdDuration) {
+    const overflowMinutes = (duration - config.video.maxAdDuration) / 60;
+    finalProbability -= overflowMinutes * config.video.durationPenalty;
+  }
+
+  return {
+    id: createRangeId(method, start, end, index),
     start,
     end,
+    probability: baseProbability,
+    finalProbability: clamp(Math.round(finalProbability), 0, 100),
+    note: range.note?.trim() || "AI 未返回说明"
+  };
+}
+
+function calculateDanmakuFinalProbability(result: AiResultShape, config: ExtensionConfig): VideoAnalysisResult {
+  const baseProbability = clamp(Math.round(result.probability), 0, 100);
+  const range = result.start && result.end
+    ? calculateRangeFinalProbability(
+        {
+          probability: result.probability,
+          start: result.start,
+          end: result.end,
+          note: result.note
+        },
+        config,
+        "danmaku",
+        0
+      )
+    : null;
+
+  return normalizeVideoAnalysisResult({
+    probability: baseProbability,
+    finalProbability: range?.finalProbability ?? baseProbability,
+    start: range?.start ?? null,
+    end: range?.end ?? null,
     note: result.note?.trim() || "AI 未返回说明",
+    method: "danmaku",
+    ranges: range ? [range] : [],
+    disabledRangeIds: [],
     source: "live",
     cacheHit: false,
     danmakuCount: 0
-  };
+  });
+}
+
+function calculateSubtitleFinalProbability(result: AiSubtitleResultShape, config: ExtensionConfig): VideoAnalysisResult {
+  const ranges = result.ranges
+    .map((range, index) => calculateRangeFinalProbability(range, config, "subtitle", index))
+    .filter((range): range is VideoAdRange => Boolean(range));
+  const topRange = [...ranges].sort((left, right) => right.finalProbability - left.finalProbability)[0] ?? null;
+
+  return normalizeVideoAnalysisResult({
+    probability: topRange?.probability ?? 0,
+    finalProbability: topRange?.finalProbability ?? 0,
+    start: topRange?.start ?? null,
+    end: topRange?.end ?? null,
+    note: result.note || topRange?.note || (ranges.length > 0 ? "字幕识别完成。" : "字幕识别完成，未发现明确广告区间。"),
+    method: "subtitle",
+    ranges,
+    disabledRangeIds: [],
+    source: "live",
+    cacheHit: false,
+    danmakuCount: 0
+  });
 }
 
 async function callAiProvider(
   client: HttpClient,
   ensureOriginAccess: EnsureOriginAccess | undefined,
   config: ExtensionConfig,
-  danmakuText: string,
+  method: AnalysisMethod,
+  prompt: string,
+  analysisText: string,
   topComment: string,
   requestId: string,
   signal: AbortSignal
@@ -1024,7 +1292,12 @@ async function callAiProvider(
   }
 
   const baseUrl = getProviderBaseUrl(provider, config);
-  const userContent = `弹幕内容：\n${danmakuText}\n\n评论区情况：\n${topComment || "无"}`;
+  const userContent = method === "subtitle"
+    ? `字幕内容：\n${analysisText}\n\n评论区情况：\n${topComment || "无"}`
+    : `弹幕内容：\n${analysisText}\n\n评论区情况：\n${topComment || "无"}`;
+  const schema = method === "subtitle"
+    ? buildSubtitleVideoAnalysisJsonSchema()
+    : buildDanmakuVideoAnalysisJsonSchema();
   let responseText = "";
   let responseSource = "response_text";
   let responseEnvelopePreview: string | undefined;
@@ -1035,7 +1308,7 @@ async function callAiProvider(
       contents: [
         {
           role: "user",
-          parts: [{ text: `${config.ai.prompt}\n\n${userContent}` }]
+          parts: [{ text: `${prompt}\n\n${userContent}` }]
         }
       ]
     });
@@ -1074,7 +1347,7 @@ async function callAiProvider(
       messages: [
         {
           role: "user",
-          content: `${config.ai.prompt}\n\n${userContent}`
+          content: `${prompt}\n\n${userContent}`
         }
       ]
     });
@@ -1111,7 +1384,7 @@ async function callAiProvider(
     };
 
     if (shouldPreferStructuredGpt5Flow(provider, config.ai.model)) {
-      const responsesRequestBody = buildOpenAiResponsesStructuredRequest(config.ai.model, config.ai.prompt, userContent);
+      const responsesRequestBody = buildOpenAiResponsesStructuredRequest(config.ai.model, prompt, userContent, schema);
       const responsesResponse = await client.requestJson<OpenAiResponsesApiPayload>(`${baseUrl}/responses`, {
         method: "POST",
         signal,
@@ -1136,7 +1409,7 @@ async function callAiProvider(
       responseEnvelopePreview = mergeEnvelopePreview(undefined, "openai.responses", responsesExtracted.envelopePreview);
 
       if (!responseText && responsesExtracted.completedWithoutOutput) {
-        const chatFallbackRequestBody = buildOpenAiChatStructuredRequest(config.ai.model, config.ai.prompt, userContent);
+        const chatFallbackRequestBody = buildOpenAiChatStructuredRequest(config.ai.model, prompt, userContent, schema);
         const chatFallbackResponse = await client.requestJson<OpenAiChatCompletionsPayload>(
           `${baseUrl}/chat/completions`,
           {
@@ -1168,7 +1441,7 @@ async function callAiProvider(
         );
 
         if (!responseText && (responsesExtracted.completedWithoutOutput || chatFallbackExtracted.completedWithoutOutput)) {
-          const responsesStreamRequestBody = buildOpenAiResponsesStructuredStreamRequest(config.ai.model, config.ai.prompt, userContent);
+          const responsesStreamRequestBody = buildOpenAiResponsesStructuredStreamRequest(config.ai.model, prompt, userContent, schema);
           const responsesStreamResponse = await client.requestText(`${baseUrl}/responses`, {
             method: "POST",
             signal,
@@ -1209,7 +1482,7 @@ async function callAiProvider(
           }
 
           if (!responseText && responsesStreamExtracted.completedWithoutOutput) {
-            const chatStreamRequestBody = buildOpenAiChatStructuredStreamRequest(config.ai.model, config.ai.prompt, userContent);
+            const chatStreamRequestBody = buildOpenAiChatStructuredStreamRequest(config.ai.model, prompt, userContent, schema);
             const chatStreamResponse = await client.requestText(`${baseUrl}/chat/completions`, {
               method: "POST",
               signal,
@@ -1266,7 +1539,7 @@ async function callAiProvider(
         }
       }
     } else {
-      const requestBody = buildOpenAiChatPromptRequest(config.ai.model, config.ai.prompt, userContent);
+      const requestBody = buildOpenAiChatPromptRequest(config.ai.model, prompt, userContent);
       const response = await client.requestJson<OpenAiChatCompletionsPayload>(`${baseUrl}/chat/completions`, {
         method: "POST",
         signal,
@@ -1292,15 +1565,17 @@ async function callAiProvider(
     }
   }
 
-  const parsed = parseAiResponse(responseText, {
+  const parseContext = {
     provider,
     model: config.ai.model,
     requestId,
     responseSource,
     responseEnvelopePreview,
     exchangeTranscript: exchangeTranscript.join("\n\n====================\n\n")
-  });
-  const result = calculateFinalProbability(parsed, config);
+  };
+  const result = method === "subtitle"
+    ? calculateSubtitleFinalProbability(parseSubtitleAiResponse(responseText, parseContext), config)
+    : calculateDanmakuFinalProbability(parseAiResponse(responseText, parseContext), config);
   result.rawResponse = responseText;
   return {
     result,
@@ -1353,18 +1628,76 @@ export function createVideoAnalysisService(
       }, config.ai.requestTimeoutMs);
 
       try {
-        const cid = await fetchCidByBvid(client, payload.bvid);
+        const pageIndex = payload.pageIndex ?? 1;
+        let subtitleUnavailableReason = "";
+
+        if (config.video.subtitleAnalysisEnabled) {
+          let subtitleTextReady = false;
+          try {
+            const info = await fetchVideoInfoByBvid(client, payload.bvid);
+            const cid = getPageCid(info, pageIndex);
+            const tracks = await fetchSubtitleTracks(client, {
+              aid: info.aid,
+              bvid: payload.bvid,
+              cid
+            });
+            const selectedTrack = selectBestSubtitleTrack(tracks);
+
+            if (!selectedTrack) {
+              subtitleUnavailableReason = "没有可用字幕轨道。";
+            } else {
+              const cues = await fetchSubtitleJson(client, selectedTrack.subtitleUrl);
+              const transcript = subtitleCuesToTimedText(cues, config);
+              if (!transcript.text) {
+                subtitleUnavailableReason = "字幕正文为空。";
+              } else {
+                subtitleTextReady = true;
+                const { result, rawResponse } = await callAiProvider(
+                  client,
+                  ensureOriginAccess,
+                  config,
+                  "subtitle",
+                  config.ai.subtitlePrompt,
+                  transcript.text,
+                  payload.topComment,
+                  payload.requestId,
+                  signal
+                );
+                return {
+                  ...result,
+                  subtitleCueCount: transcript.count,
+                  subtitleTrack: selectedTrack,
+                  rawResponse
+                };
+              }
+            }
+          } catch (error) {
+            if (error instanceof Error && error.name === "AbortError") {
+              throw error;
+            }
+            if (subtitleTextReady) {
+              throw error;
+            }
+            subtitleUnavailableReason = error instanceof Error ? error.message : String(error);
+          }
+        }
+
+        if (!config.video.danmakuAnalysisEnabled) {
+          return createNoAnalysisResult(
+            subtitleUnavailableReason
+              ? `字幕识别不可用：${subtitleUnavailableReason} 弹幕识别当前未开启。`
+              : "字幕识别未开启，弹幕识别当前未开启。"
+          );
+        }
+
+        const cid = pageIndex > 1
+          ? getPageCid(await fetchVideoInfoByBvid(client, payload.bvid), pageIndex)
+          : await fetchCidByBvid(client, payload.bvid);
         const xml = await fetchDanmakuXml(client, cid);
         const filtered = filterDanmakuText(xml, config);
         if (!filtered.text) {
           return {
-            probability: 0,
-            finalProbability: 0,
-            start: null,
-            end: null,
-            note: "过滤后的有效弹幕过少，且没有足够的广告指示信息，已跳过 AI 分析。",
-            source: "live",
-            cacheHit: false,
+            ...createNoAnalysisResult("过滤后的有效弹幕过少，且没有足够的广告指示信息，已跳过 AI 分析。", "danmaku"),
             danmakuCount: filtered.count
           };
         }
@@ -1373,6 +1706,8 @@ export function createVideoAnalysisService(
           client,
           ensureOriginAccess,
           config,
+          "danmaku",
+          config.ai.danmakuPrompt,
           filtered.text,
           payload.topComment,
           payload.requestId,

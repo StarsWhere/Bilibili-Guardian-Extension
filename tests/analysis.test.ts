@@ -1,6 +1,7 @@
 import { DEFAULT_CONFIG } from "@/shared/config";
 import { getVideoAnalysisErrorDetails } from "@/shared/errors";
-import { createVideoAnalysisService, extractOpenAiCompatibleResponse, parseAiResponse } from "@/core/analysis";
+import { selectBestSubtitleTrack } from "@/core/bilibili";
+import { createVideoAnalysisService, extractOpenAiCompatibleResponse, parseAiResponse, parseSubtitleAiResponse } from "@/core/analysis";
 import type { HttpClient } from "@/core/http";
 
 const context = {
@@ -148,6 +149,384 @@ describe("parseAiResponse", () => {
     }
   });
 
+  it("selects Chinese AI subtitle tracks before author subtitles", () => {
+    expect(
+      selectBestSubtitleTrack([
+        {
+          lan: "en",
+          lan_doc: "English",
+          type: 1,
+          ai_type: 0,
+          subtitle_url: "//example.com/en.json"
+        },
+        {
+          lan: "zh-CN",
+          lan_doc: "中文（自动生成）",
+          type: 1,
+          ai_type: 0,
+          subtitle_url: "//example.com/zh-ai.json"
+        },
+        {
+          lan: "zh-CN",
+          lan_doc: "中文",
+          type: 0,
+          subtitle_url: "//example.com/zh-author.json"
+        }
+      ])?.subtitleUrl
+    ).toBe("https://example.com/zh-ai.json");
+  });
+
+  it("parses subtitle AI responses with multiple ranges", () => {
+    expect(
+      parseSubtitleAiResponse(
+        '{"ranges":[{"probability":82,"start":"00:10","end":"00:40","note":"片头赞助"},{"probability":"71","start":"05:00","end":"05:30","note":"结尾推广"}],"note":"两段广告"}',
+        context
+      )
+    ).toEqual({
+      ranges: [
+        {
+          probability: 82,
+          start: "00:10",
+          end: "00:40",
+          note: "片头赞助"
+        },
+        {
+          probability: 71,
+          start: "05:00",
+          end: "05:30",
+          note: "结尾推广"
+        }
+      ],
+      note: "两段广告"
+    });
+  });
+
+  it("analyzes subtitles into multiple skip ranges", async () => {
+    const requestJson = vi.fn(async (url: string) => {
+      if (url.includes("/x/web-interface/view")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              aid: 100,
+              bvid: "BV1subtitle",
+              cid: 200,
+              title: "字幕测试",
+              pages: [{ cid: 200 }]
+            }
+          }
+        };
+      }
+
+      if (url.includes("/x/web-interface/nav")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              wbi_img: {
+                img_url: "https://i0.hdslb.com/bfs/wbi/abcdefghijklmnopqrstuvwxyz1234567890abcdefabcdefabcdefab.png",
+                sub_url: "https://i0.hdslb.com/bfs/wbi/1234567890abcdefghijklmnopqrstuvwxyzabcdefabcdefabcd.png"
+              }
+            }
+          }
+        };
+      }
+
+      if (url.includes("/x/player/wbi/v2")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              subtitle: {
+                subtitles: [
+                  {
+                    lan: "zh-CN",
+                    lan_doc: "中文（自动生成）",
+                    type: 1,
+                    ai_type: 0,
+                    ai_status: 2,
+                    subtitle_url: "https://aisubtitle.hdslb.com/subtitle.json"
+                  }
+                ]
+              }
+            }
+          }
+        };
+      }
+
+      if (url.includes("aisubtitle.hdslb.com/subtitle.json")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            body: [
+              { from: 10, to: 16, content: "本期视频由某某赞助" },
+              { from: 20, to: 36, content: "点击链接购买课程" }
+            ]
+          }
+        };
+      }
+
+      if (url.includes("/chat/completions")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            choices: [
+              {
+                message: {
+                  content: "{\"ranges\":[{\"probability\":84,\"start\":\"00:10\",\"end\":\"00:28\",\"note\":\"片头赞助\"},{\"probability\":76,\"start\":\"02:00\",\"end\":\"02:20\",\"note\":\"中段推广\"}],\"note\":\"字幕命中两段\"}"
+                }
+              }
+            ]
+          }
+        };
+      }
+
+      throw new Error(`unexpected JSON request: ${url}`);
+    });
+
+    const service = createVideoAnalysisService({
+      requestJson: requestJson as HttpClient["requestJson"],
+      requestText: vi.fn()
+    });
+    const result = await service.analyzeVideo(
+      {
+        bvid: "BV1subtitle",
+        pageIndex: 1,
+        topComment: "首条评论：测试",
+        requestId: "BV1subtitle-123"
+      },
+      {
+        ...DEFAULT_CONFIG,
+        ai: {
+          ...DEFAULT_CONFIG.ai,
+          apiKey: "token"
+        }
+      }
+    );
+
+    expect(result.method).toBe("subtitle");
+    expect(result.ranges).toHaveLength(2);
+    expect(result.finalProbability).toBe(84);
+    expect(result.subtitleCueCount).toBe(2);
+    expect(result.subtitleTrack?.lan).toBe("zh-CN");
+  });
+
+  it("falls back to danmaku only when subtitles are unavailable and danmaku analysis is enabled", async () => {
+    const requestJson = vi.fn(async (url: string) => {
+      if (url.includes("/x/web-interface/view")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              aid: 100,
+              bvid: "BV1fallback",
+              cid: 200,
+              pages: [{ cid: 200 }]
+            }
+          }
+        };
+      }
+
+      if (url.includes("/x/web-interface/nav") || url.includes("/x/player/")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              subtitle: {
+                subtitles: []
+              },
+              wbi_img: {
+                img_url: "https://i0.hdslb.com/bfs/wbi/abcdefghijklmnopqrstuvwxyz1234567890abcdefabcdefabcdefab.png",
+                sub_url: "https://i0.hdslb.com/bfs/wbi/1234567890abcdefghijklmnopqrstuvwxyzabcdefabcdefabcd.png"
+              }
+            }
+          }
+        };
+      }
+
+      if (url.includes("/chat/completions")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            choices: [
+              {
+                message: {
+                  content: "{\"probability\":77,\"start\":\"00:30\",\"end\":\"01:00\",\"note\":\"弹幕空降广告\"}"
+                }
+              }
+            ]
+          }
+        };
+      }
+
+      throw new Error(`unexpected JSON request: ${url}`);
+    });
+    const requestText = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      data: `<i>${Array.from({ length: 20 }, (_, index) => `<d p="${index + 30},1,25,16777215,0,0,0,0">广告空降</d>`).join("")}</i>`
+    }));
+
+    const service = createVideoAnalysisService({
+      requestJson: requestJson as HttpClient["requestJson"],
+      requestText
+    });
+    const result = await service.analyzeVideo(
+      {
+        bvid: "BV1fallback",
+        topComment: "首条评论：测试",
+        requestId: "BV1fallback-123"
+      },
+      {
+        ...DEFAULT_CONFIG,
+        video: {
+          ...DEFAULT_CONFIG.video,
+          danmakuAnalysisEnabled: true
+        },
+        ai: {
+          ...DEFAULT_CONFIG.ai,
+          apiKey: "token"
+        }
+      }
+    );
+
+    expect(result.method).toBe("danmaku");
+    expect(result.finalProbability).toBe(77);
+    expect(requestText).toHaveBeenCalled();
+  });
+
+  it("does not fall back to danmaku when subtitle text is available but subtitle AI output is invalid", async () => {
+    expect.assertions(3);
+
+    const requestJson = vi.fn(async (url: string) => {
+      if (url.includes("/x/web-interface/view")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              aid: 100,
+              bvid: "BV1subtitleError",
+              cid: 200,
+              pages: [{ cid: 200 }]
+            }
+          }
+        };
+      }
+
+      if (url.includes("/x/web-interface/nav")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              wbi_img: {
+                img_url: "https://i0.hdslb.com/bfs/wbi/abcdefghijklmnopqrstuvwxyz1234567890abcdefabcdefabcdefab.png",
+                sub_url: "https://i0.hdslb.com/bfs/wbi/1234567890abcdefghijklmnopqrstuvwxyzabcdefabcdefabcd.png"
+              }
+            }
+          }
+        };
+      }
+
+      if (url.includes("/x/player/wbi/v2")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              subtitle: {
+                subtitles: [
+                  {
+                    lan: "zh-CN",
+                    lan_doc: "中文（自动生成）",
+                    type: 1,
+                    ai_type: 0,
+                    subtitle_url: "https://aisubtitle.hdslb.com/subtitle-error.json"
+                  }
+                ]
+              }
+            }
+          }
+        };
+      }
+
+      if (url.includes("aisubtitle.hdslb.com/subtitle-error.json")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            body: [{ from: 10, to: 20, content: "赞助内容" }]
+          }
+        };
+      }
+
+      if (url.includes("/chat/completions")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            choices: [
+              {
+                message: {
+                  content: "这段有广告，但我不返回 JSON。"
+                }
+              }
+            ]
+          }
+        };
+      }
+
+      throw new Error(`unexpected JSON request: ${url}`);
+    });
+    const requestText = vi.fn();
+    const service = createVideoAnalysisService({
+      requestJson: requestJson as HttpClient["requestJson"],
+      requestText
+    });
+
+    try {
+      await service.analyzeVideo(
+        {
+          bvid: "BV1subtitleError",
+          topComment: "首条评论：测试",
+          requestId: "BV1subtitleError-123"
+        },
+        {
+          ...DEFAULT_CONFIG,
+          video: {
+            ...DEFAULT_CONFIG.video,
+            danmakuAnalysisEnabled: true
+          },
+          ai: {
+            ...DEFAULT_CONFIG.ai,
+            apiKey: "token"
+          }
+        }
+      );
+    } catch (error) {
+      expect((error as Error).message).toContain("没有找到可解析的 JSON");
+      expect(getVideoAnalysisErrorDetails(error)?.code).toBe("no_json_found");
+      expect(requestText).not.toHaveBeenCalled();
+    }
+  });
+
   it("prefers responses API with json schema for GPT-5 and falls back to chat schema when completed without output", async () => {
     const requestJson = vi.fn(async (url: string, init?: { body?: string }) => {
       if (url.includes("/x/web-interface/view")) {
@@ -228,6 +607,11 @@ describe("parseAiResponse", () => {
       },
       {
         ...DEFAULT_CONFIG,
+        video: {
+          ...DEFAULT_CONFIG.video,
+          subtitleAnalysisEnabled: false,
+          danmakuAnalysisEnabled: true
+        },
         ai: {
           ...DEFAULT_CONFIG.ai,
           provider: "openai",
@@ -378,6 +762,11 @@ describe("parseAiResponse", () => {
         },
         {
           ...DEFAULT_CONFIG,
+          video: {
+            ...DEFAULT_CONFIG.video,
+            subtitleAnalysisEnabled: false,
+            danmakuAnalysisEnabled: true
+          },
           ai: {
             ...DEFAULT_CONFIG.ai,
             provider: "openai",
@@ -493,6 +882,11 @@ describe("parseAiResponse", () => {
       },
       {
         ...DEFAULT_CONFIG,
+        video: {
+          ...DEFAULT_CONFIG.video,
+          subtitleAnalysisEnabled: false,
+          danmakuAnalysisEnabled: true
+        },
         ai: {
           ...DEFAULT_CONFIG.ai,
           provider: "openai",

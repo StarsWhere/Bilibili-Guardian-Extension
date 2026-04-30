@@ -170,6 +170,7 @@ export interface VideoAnalysisErrorDetails {
 
 export interface BackgroundAnalyzeVideoPayload {
   bvid: string;
+  pageIndex?: number;
   topComment: string;
   force?: boolean;
   requestId: string;
