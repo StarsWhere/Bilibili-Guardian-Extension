@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 const projectRoot = process.cwd();
 const packageJsonPath = path.join(projectRoot, "package.json");
 const manifestPath = path.join(projectRoot, "public", "manifest.json");
+const readmePath = path.join(projectRoot, "README.md");
 const userscriptArtifactName = "bilibili-guardian.user.js";
 
 function readJson(filePath) {
@@ -13,6 +14,27 @@ function readJson(filePath) {
 
 function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function readText(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function writeText(filePath, value) {
+  fs.writeFileSync(filePath, value, "utf8");
+}
+
+function getReadmeVersion(readmeText) {
+  const matched = readmeText.match(/^- 当前版本：`(\d+\.\d+\.\d+)`$/m);
+  return matched?.[1] ?? null;
+}
+
+function updateReadmeVersion(readmeText, version) {
+  const next = readmeText.replace(/^- 当前版本：`\d+\.\d+\.\d+`$/m, `- 当前版本：\`${version}\``);
+  if (next === readmeText) {
+    throw new Error("README.md 中没有找到版本号行：- 当前版本：`x.y.z`");
+  }
+  return next;
 }
 
 function runGit(args, options = {}) {
@@ -65,6 +87,8 @@ function writeGithubOutput(key, value) {
 function main() {
   const packageJson = readJson(packageJsonPath);
   const manifestJson = readJson(manifestPath);
+  const readmeText = readText(readmePath);
+  const readmeVersion = getReadmeVersion(readmeText);
 
   if (!packageJson.version) {
     throw new Error("package.json 缺少 version 字段");
@@ -74,12 +98,23 @@ function main() {
     throw new Error("public/manifest.json 缺少 version 字段");
   }
 
+  if (!readmeVersion) {
+    throw new Error("README.md 缺少版本号行：- 当前版本：`x.y.z`");
+  }
+
   assertSemver(packageJson.version, "package.json version");
   assertSemver(manifestJson.version, "manifest version");
+  assertSemver(readmeVersion, "README.md 当前版本");
 
   if (packageJson.version !== manifestJson.version) {
     throw new Error(
       `package.json 与 public/manifest.json 版本号不一致: ${packageJson.version} !== ${manifestJson.version}`
+    );
+  }
+
+  if (packageJson.version !== readmeVersion) {
+    throw new Error(
+      `package.json 与 README.md 版本号不一致: ${packageJson.version} !== ${readmeVersion}`
     );
   }
 
@@ -98,6 +133,7 @@ function main() {
 
   writeJson(packageJsonPath, packageJson);
   writeJson(manifestPath, manifestJson);
+  writeText(readmePath, updateReadmeVersion(readmeText, version));
 
   writeGithubOutput("version", version);
   writeGithubOutput("tag", tag);
