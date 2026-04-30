@@ -12,6 +12,7 @@ import type {
 } from "@/shared/types";
 import { createStyles } from "./styles";
 import { clampButtonPosition, hasDragged, snapToViewportEdge } from "./drag";
+import { getEnabledVideoAdRanges, getTopVideoAdRange, getVideoAdRanges } from "@/shared/videoResult";
 
 export interface GuardianRuntimeState {
   route: "feed" | "video" | "idle";
@@ -155,6 +156,19 @@ export function toProviderLabel(provider: ExtensionConfig["ai"]["provider"]): st
   }
 }
 
+function toAnalysisMethodLabel(method: VideoAnalysisResult["method"] | undefined): string {
+  switch (method) {
+    case "subtitle":
+      return "字幕识别";
+    case "danmaku":
+      return "弹幕识别";
+    case "none":
+      return "未使用识别源";
+    default:
+      return "兼容结果";
+  }
+}
+
 function toFailureStageLabel(stage: VideoAnalysisFailureStage): string {
   switch (stage) {
     case "response_parse":
@@ -217,12 +231,18 @@ function getVideoSummary(result: VideoAnalysisResult | null, error: string | nul
     return "打开视频后，扩展会自动尝试识别其中可能需要跳过的片段。";
   }
 
-  return result.note || "已获得本次识别说明。";
+  const ranges = getVideoAdRanges(result);
+  const method = toAnalysisMethodLabel(result.method);
+  if (ranges.length > 0) {
+    return `${method}发现 ${ranges.length} 个候选区间。${result.note ? ` ${result.note}` : ""}`.trim();
+  }
+
+  return result.note || `${method}完成，未发现明确广告区间。`;
 }
 
 function getVideoWaitingSummary(phase: VideoAnalysisPhase): string {
   if (phase === "collecting") {
-    return "正在整理当前视频的弹幕和评论，请稍等。";
+    return "正在整理当前视频的字幕、弹幕和评论，请稍等。";
   }
 
   if (phase === "analyzing") {
@@ -1349,11 +1369,14 @@ export class ControlCenter {
       };
     }
 
-    if (this.runtime.route === "video" && this.runtime.videoResult && this.runtime.videoResult.finalProbability >= this.config.video.probabilityThreshold) {
+    if (
+      this.runtime.route === "video" &&
+      getEnabledVideoAdRanges(this.runtime.videoResult, this.config.video.probabilityThreshold).length > 0
+    ) {
       return {
         tone: "success",
-        title: "当前视频更像是可跳过片段",
-        note: "这次识别已经给出较高把握，你可以让它自动跳过。"
+        title: "当前视频存在可跳过片段",
+        note: "这次识别已经给出较高把握，进度条上会标出对应区间。"
       };
     }
 
@@ -1389,8 +1412,13 @@ export class ControlCenter {
     summary: string;
   } {
     const result = this.runtime.videoResult;
-    const probability = result ? `${result.finalProbability}%` : "--";
-    const range = result?.start && result?.end ? `${result.start} - ${result.end}` : "还没有识别出明确区间";
+    const topRange = getTopVideoAdRange(result);
+    const ranges = getVideoAdRanges(result);
+    const enabledRanges = getEnabledVideoAdRanges(result, this.config.video.probabilityThreshold);
+    const probability = topRange ? `${topRange.finalProbability}%` : result ? `${result.finalProbability}%` : "--";
+    const range = ranges.length > 0
+      ? `${enabledRanges.length}/${ranges.length} 段可跳过${topRange ? ` · 最高 ${topRange.start} - ${topRange.end}` : ""}`
+      : "还没有识别出明确区间";
     const summary = getVideoSummary(result, this.runtime.videoError);
 
     if (this.runtime.videoError) {
@@ -1415,7 +1443,7 @@ export class ControlCenter {
       };
     }
 
-    if (result && result.finalProbability >= this.config.video.probabilityThreshold) {
+    if (result && enabledRanges.length > 0) {
       return {
         tone: "success",
         pill: "建议跳过",

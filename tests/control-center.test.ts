@@ -440,7 +440,7 @@ describe("ControlCenter advanced settings", () => {
 
     expect(document.querySelector<HTMLElement>("[data-role='video-quick-card']")).toBeNull();
     expect(document.querySelector<HTMLElement>(".guardian-video-quick-card")?.classList.contains("visible")).toBe(false);
-    expect(document.querySelector<HTMLElement>(".guardian-modal")?.textContent).toContain("正在整理当前视频的弹幕和评论，请稍等。");
+    expect(document.querySelector<HTMLElement>(".guardian-modal")?.textContent).toContain("正在整理当前视频的字幕、弹幕和评论，请稍等。");
     expect(document.querySelector<HTMLElement>(".guardian-modal")?.textContent).not.toContain("旧结果不应该继续显示。");
     expect(panelRunButton?.textContent).toContain("正在识别当前视频");
     expect(panelRunButton?.hasAttribute("disabled")).toBe(true);
