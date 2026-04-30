@@ -449,6 +449,77 @@ describe("ControlCenter advanced settings", () => {
     expect(document.querySelector(".guardian-tab.active")?.textContent).toContain("视频跳过");
   });
 
+  it("shows no skippable range when candidates are disabled or below threshold", () => {
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: false,
+        activeTab: "overview"
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        apiKey: "token"
+      }
+    };
+
+    const runtime = createRuntime();
+    runtime.route = "video";
+    runtime.videoBvid = "BV1noskip";
+    runtime.videoPhase = "ready";
+    runtime.currentVideoAutoSkip = true;
+    runtime.videoResult = {
+      probability: 90,
+      finalProbability: 90,
+      start: "00:40",
+      end: "01:10",
+      note: "候选区间不应作为可跳区间展示。",
+      method: "subtitle",
+      ranges: [
+        {
+          id: "range-disabled",
+          start: "00:40",
+          end: "01:10",
+          probability: 90,
+          finalProbability: 90,
+          note: "已禁用"
+        },
+        {
+          id: "range-low",
+          start: "02:00",
+          end: "02:30",
+          probability: 60,
+          finalProbability: 60,
+          note: "低于阈值"
+        }
+      ],
+      disabledRangeIds: ["range-disabled"],
+      source: "live",
+      cacheHit: false,
+      danmakuCount: 0
+    };
+
+    const controlCenter = new ControlCenter(config, runtime, {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig: vi.fn().mockResolvedValue(undefined),
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    const cardText = document.querySelector<HTMLElement>("[data-role='video-quick-card']")?.textContent ?? "";
+    expect(cardText).toContain("已识别");
+    expect(cardText).toContain("0/2 段可跳过 · 当前无可跳区间");
+    expect(cardText).not.toContain("建议跳过");
+    expect(cardText).not.toContain("最高 00:40 - 01:10");
+  });
+
   it("shows the collecting state without reusing the previous result and disables rerun actions", () => {
     const config: ExtensionConfig = {
       ...DEFAULT_CONFIG,

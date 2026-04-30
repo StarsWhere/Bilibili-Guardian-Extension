@@ -12,7 +12,7 @@ import type {
 } from "@/shared/types";
 import { createStyles } from "./styles";
 import { clampButtonPosition, hasDragged, snapToViewportEdge } from "./drag";
-import { getEnabledVideoAdRanges, getTopVideoAdRange, getVideoAdRanges } from "@/shared/videoResult";
+import { getEnabledVideoAdRanges, getTopEnabledVideoAdRange, getVideoAdRanges } from "@/shared/videoResult";
 
 export interface GuardianRuntimeState {
   route: "feed" | "video" | "idle";
@@ -701,7 +701,7 @@ export class ControlCenter {
       case "ready":
       case "cached":
       case "skipped":
-        return this.runtime.videoResult ? String(this.runtime.videoResult.finalProbability) : "好";
+        return String(getTopEnabledVideoAdRange(this.runtime.videoResult, this.config.video.probabilityThreshold)?.finalProbability ?? "好");
       case "error":
         return "!";
       default:
@@ -1409,12 +1409,14 @@ export class ControlCenter {
     summary: string;
   } {
     const result = this.runtime.videoResult;
-    const topRange = getTopVideoAdRange(result);
     const ranges = getVideoAdRanges(result);
     const enabledRanges = getEnabledVideoAdRanges(result, this.config.video.probabilityThreshold);
-    const probability = topRange ? `${topRange.finalProbability}%` : result ? `${result.finalProbability}%` : "--";
+    const topEnabledRange = getTopEnabledVideoAdRange(result, this.config.video.probabilityThreshold);
+    const probability = topEnabledRange ? `${topEnabledRange.finalProbability}%` : result ? `${result.finalProbability}%` : "--";
     const range = ranges.length > 0
-      ? `${enabledRanges.length}/${ranges.length} 段可跳过${topRange ? ` · 最高 ${topRange.start} - ${topRange.end}` : ""}`
+      ? enabledRanges.length > 0
+        ? `${enabledRanges.length}/${ranges.length} 段可跳过${topEnabledRange ? ` · 最高 ${topEnabledRange.start} - ${topEnabledRange.end}` : ""}`
+        : `0/${ranges.length} 段可跳过 · 当前无可跳区间`
       : "还没有识别出明确区间";
     const summary = getVideoSummary(result, this.runtime.videoError);
 

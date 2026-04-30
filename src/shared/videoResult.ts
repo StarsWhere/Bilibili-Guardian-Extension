@@ -71,3 +71,15 @@ export function getEnabledVideoAdRanges(
     (range) => !disabled.has(range.id) && range.finalProbability >= probabilityThreshold
   );
 }
+
+export function getTopEnabledVideoAdRange(
+  result: VideoAnalysisResult | null | undefined,
+  probabilityThreshold: number
+): VideoAdRange | null {
+  const ranges = getEnabledVideoAdRanges(result, probabilityThreshold);
+  if (ranges.length === 0) {
+    return null;
+  }
+
+  return [...ranges].sort((left, right) => right.finalProbability - left.finalProbability)[0];
+}
