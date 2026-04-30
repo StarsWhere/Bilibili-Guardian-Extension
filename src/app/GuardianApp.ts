@@ -5,6 +5,7 @@ import { ControlCenter, hasConfiguredRecognitionService, type GuardianRuntimeSta
 import { DEFAULT_CONFIG } from "@/shared/config";
 import type { GuardianPlatformServices } from "@/shared/platform";
 import type { RouteModule } from "@/shared/router";
+import { timeStringToSeconds } from "@/shared/time";
 import type { DeepPartial, ExtensionConfig, VideoAnalysisErrorDetails } from "@/shared/types";
 import { classifyFeedPage, isVideoPage } from "@/shared/url";
 import { getEnabledVideoAdRanges } from "@/shared/videoResult";
@@ -270,7 +271,8 @@ export class GuardianApp {
 
     if (this.runtime.videoPhase === "ready" && previousPhase !== "ready" && this.runtime.videoResult) {
       const result = this.runtime.videoResult;
-      const ranges = getEnabledVideoAdRanges(result, this.config.video.probabilityThreshold);
+      const ranges = getEnabledVideoAdRanges(result, this.config.video.probabilityThreshold)
+        .sort((left, right) => timeStringToSeconds(left.start) - timeStringToSeconds(right.start));
       if (ranges.length > 0) {
         const first = ranges[0];
         this.ui.showEdgeToast(`识别完成，发现 ${ranges.length} 个可跳过区间，首段 ${first.start} - ${first.end}。`, "success", {
