@@ -8,6 +8,7 @@ const USERSCRIPT_ICON_URL = "https://raw.githubusercontent.com/StarsWhere/Bilibi
 const USERSCRIPT_CONNECT_DOMAINS = [
   "api.bilibili.com",
   "comment.bilibili.com",
+  "*.hdslb.com",
   "api.openai.com",
   "api.deepseek.com",
   "generativelanguage.googleapis.com",
