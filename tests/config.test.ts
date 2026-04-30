@@ -14,9 +14,28 @@ describe("mergeConfig", () => {
     expect(merged.feed.autoDislikeAuthor).toBe(false);
     expect(merged.ai.provider).toBe(DEFAULT_CONFIG.ai.provider);
     expect(merged.video.subtitleAnalysisEnabled).toBe(true);
+    expect(merged.video.subtitleFilterEnabled).toBe(true);
+    expect(merged.video.subtitleFilterContextSeconds).toBe(45);
     expect(merged.video.danmakuAnalysisEnabled).toBe(false);
     expect(merged.video.introGuardSeconds).toBe(30);
     expect(merged.video.maxSkipDurationSeconds).toBe(300);
+    expect(merged.ai.subtitleWhitelistEnabled).toBe(true);
+    expect(merged.ai.subtitleWhitelist).toContain("赞助");
+    expect(merged.ai.subtitleBlacklist).toContain("三连");
+  });
+
+  it("keeps legacy danmaku term lists separate from subtitle term defaults", () => {
+    const merged = mergeConfig({
+      ai: {
+        whitelist: ["空降测试"],
+        blacklist: ["正片测试"]
+      }
+    });
+
+    expect(merged.ai.whitelist).toEqual(["空降测试"]);
+    expect(merged.ai.blacklist).toEqual(["正片测试"]);
+    expect(merged.ai.subtitleWhitelist).toEqual(DEFAULT_CONFIG.ai.subtitleWhitelist);
+    expect(merged.ai.subtitleBlacklist).toEqual(DEFAULT_CONFIG.ai.subtitleBlacklist);
   });
 
   it("migrates the legacy prompt to the danmaku prompt while keeping subtitle prompt defaults", () => {

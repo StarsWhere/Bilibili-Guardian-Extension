@@ -55,6 +55,8 @@ export interface ExtensionConfig {
     enabled: boolean;
     defaultAutoSkip: boolean;
     subtitleAnalysisEnabled: boolean;
+    subtitleFilterEnabled: boolean;
+    subtitleFilterContextSeconds: number;
     danmakuAnalysisEnabled: boolean;
     probabilityThreshold: number;
     introGuardSeconds: number;
@@ -72,6 +74,12 @@ export interface ExtensionConfig {
     prompt: string;
     danmakuPrompt: string;
     subtitlePrompt: string;
+    subtitleWhitelistEnabled: boolean;
+    subtitleWhitelistRegex: boolean;
+    subtitleWhitelist: string[];
+    subtitleBlacklistEnabled: boolean;
+    subtitleBlacklistRegex: boolean;
+    subtitleBlacklist: string[];
     requestTimeoutMs: number;
     whitelistEnabled: boolean;
     whitelistRegex: boolean;
