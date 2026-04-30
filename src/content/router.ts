@@ -13,7 +13,7 @@ export class RouteManager {
   }
 
   async refresh(): Promise<void> {
-    await this.handleUrlChange(new URL(window.location.href));
+    await this.handleUrlChange(new URL(window.location.href), true);
   }
 
   stop(): void {
@@ -23,8 +23,8 @@ export class RouteManager {
     this.currentModule = null;
   }
 
-  private async handleUrlChange(nextUrl: URL): Promise<void> {
-    if (nextUrl.href === this.currentUrl.href && this.currentModule) {
+  private async handleUrlChange(nextUrl: URL, force = false): Promise<void> {
+    if (!force && nextUrl.href === this.currentUrl.href && this.currentModule) {
       return;
     }
 
