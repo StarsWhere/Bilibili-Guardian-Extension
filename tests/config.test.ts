@@ -13,6 +13,20 @@ describe("mergeConfig", () => {
     expect(merged.feed.autoDislikeContent).toBe(false);
     expect(merged.feed.autoDislikeAuthor).toBe(false);
     expect(merged.ai.provider).toBe(DEFAULT_CONFIG.ai.provider);
+    expect(merged.video.subtitleAnalysisEnabled).toBe(true);
+    expect(merged.video.danmakuAnalysisEnabled).toBe(false);
+  });
+
+  it("migrates the legacy prompt to the danmaku prompt while keeping subtitle prompt defaults", () => {
+    const merged = mergeConfig({
+      ai: {
+        prompt: "旧弹幕提示词"
+      }
+    });
+
+    expect(merged.ai.prompt).toBe("旧弹幕提示词");
+    expect(merged.ai.danmakuPrompt).toBe("旧弹幕提示词");
+    expect(merged.ai.subtitlePrompt).toBe(DEFAULT_CONFIG.ai.subtitlePrompt);
   });
 
   it("preserves onboarding flag defaults and allows overriding it", () => {

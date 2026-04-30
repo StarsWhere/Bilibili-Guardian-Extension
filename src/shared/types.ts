@@ -54,12 +54,15 @@ export interface ExtensionConfig {
   video: {
     enabled: boolean;
     defaultAutoSkip: boolean;
+    subtitleAnalysisEnabled: boolean;
+    danmakuAnalysisEnabled: boolean;
     probabilityThreshold: number;
     durationPenalty: number;
     minAdDuration: number;
     maxAdDuration: number;
     minDanmakuForAnalysis: number;
     maxDanmakuCount: number;
+    maxSubtitleCueCount: number;
     cacheTtlMinutes: number;
   };
   ai: {
@@ -68,6 +71,8 @@ export interface ExtensionConfig {
     apiKey: string;
     model: string;
     prompt: string;
+    danmakuPrompt: string;
+    subtitlePrompt: string;
     requestTimeoutMs: number;
     whitelistEnabled: boolean;
     whitelistRegex: boolean;

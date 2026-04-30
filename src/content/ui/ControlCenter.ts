@@ -1010,6 +1010,8 @@ export class ControlCenter {
         <div class="guardian-stack">
           ${this.renderSwitchField("video.enabled", "启用视频跳过", "进入视频页后自动尝试识别。", formConfig.video.enabled)}
           ${this.renderSwitchField("video.defaultAutoSkip", "识别后默认自动跳过", "适合希望减少手动操作的日常使用。", formConfig.video.defaultAutoSkip)}
+          ${this.renderSwitchField("video.subtitleAnalysisEnabled", "优先使用 AI 字幕识别", "字幕可用时以字幕识别结果为准，支持多个广告区间。", formConfig.video.subtitleAnalysisEnabled)}
+          ${this.renderSwitchField("video.danmakuAnalysisEnabled", "允许弹幕识别兜底", "仅在字幕不可用时使用弹幕与评论判断。", formConfig.video.danmakuAnalysisEnabled)}
           ${this.renderSwitchField("toggle-current-skip", "当前这个视频允许自动跳过", this.runtime.videoBvid ? "你可以临时关闭当前视频的自动跳过。" : "打开视频后，这里会显示当前视频专属开关。", this.runtime.currentVideoAutoSkip, true, !this.runtime.videoBvid)}
         </div>
         <div class="guardian-grid-2">
@@ -1105,8 +1107,11 @@ export class ControlCenter {
         <details class="guardian-details" data-section="preferences" ${advancedSection === "preferences" ? "open" : ""}>
           <summary data-action="open-advanced-section" data-section="preferences">识别偏好</summary>
           <div class="guardian-details-body">
-            <label class="guardian-label">识别说明词
-              <textarea class="guardian-textarea guardian-textarea-lg" data-field="ai.prompt" placeholder="这里适合熟悉后再修改">${escapeHtml(formConfig.ai.prompt)}</textarea>
+            <label class="guardian-label">字幕识别说明词
+              <textarea class="guardian-textarea guardian-textarea-lg" data-field="ai.subtitlePrompt" placeholder="用于 AI 字幕多区间识别">${escapeHtml(formConfig.ai.subtitlePrompt)}</textarea>
+            </label>
+            <label class="guardian-label">弹幕识别说明词
+              <textarea class="guardian-textarea guardian-textarea-lg" data-field="ai.danmakuPrompt" placeholder="用于弹幕和评论识别">${escapeHtml(formConfig.ai.danmakuPrompt)}</textarea>
             </label>
             <div class="guardian-grid-2">
               <label class="guardian-label">优先参考词
@@ -1128,6 +1133,9 @@ export class ControlCenter {
               </label>
               <label class="guardian-label">最少参考弹幕数
                 <input class="guardian-field" data-field="video.minDanmakuForAnalysis" type="number" min="1" value="${formConfig.video.minDanmakuForAnalysis}">
+              </label>
+              <label class="guardian-label">最多参考字幕条数
+                <input class="guardian-field" data-field="video.maxSubtitleCueCount" type="number" min="1" value="${formConfig.video.maxSubtitleCueCount}">
               </label>
               <label class="guardian-label">最短片段时长（秒）
                 <input class="guardian-field" data-field="video.minAdDuration" type="number" min="1" value="${formConfig.video.minAdDuration}">
@@ -1646,7 +1654,9 @@ export class ControlCenter {
       {
         ai: {
           ...this.config.ai,
-          prompt: formConfig.ai.prompt,
+          prompt: formConfig.ai.danmakuPrompt,
+          danmakuPrompt: formConfig.ai.danmakuPrompt,
+          subtitlePrompt: formConfig.ai.subtitlePrompt,
           whitelist: formConfig.ai.whitelist,
           blacklist: formConfig.ai.blacklist,
           whitelistEnabled: formConfig.ai.whitelistEnabled,
@@ -1658,6 +1668,7 @@ export class ControlCenter {
           ...this.config.video,
           durationPenalty: formConfig.video.durationPenalty,
           minDanmakuForAnalysis: formConfig.video.minDanmakuForAnalysis,
+          maxSubtitleCueCount: formConfig.video.maxSubtitleCueCount,
           minAdDuration: formConfig.video.minAdDuration,
           maxAdDuration: formConfig.video.maxAdDuration
         }
@@ -1841,6 +1852,12 @@ export class ControlCenter {
       case "video.defaultAutoSkip":
         formConfig.video.defaultAutoSkip = target instanceof HTMLInputElement ? target.checked : formConfig.video.defaultAutoSkip;
         return;
+      case "video.subtitleAnalysisEnabled":
+        formConfig.video.subtitleAnalysisEnabled = target instanceof HTMLInputElement ? target.checked : formConfig.video.subtitleAnalysisEnabled;
+        return;
+      case "video.danmakuAnalysisEnabled":
+        formConfig.video.danmakuAnalysisEnabled = target instanceof HTMLInputElement ? target.checked : formConfig.video.danmakuAnalysisEnabled;
+        return;
       case "video.probabilityThreshold":
         formConfig.video.probabilityThreshold = this.readNumericValue(target.value, formConfig.video.probabilityThreshold);
         return;
@@ -1852,6 +1869,9 @@ export class ControlCenter {
         return;
       case "video.minDanmakuForAnalysis":
         formConfig.video.minDanmakuForAnalysis = this.readNumericValue(target.value, formConfig.video.minDanmakuForAnalysis);
+        return;
+      case "video.maxSubtitleCueCount":
+        formConfig.video.maxSubtitleCueCount = this.readNumericValue(target.value, formConfig.video.maxSubtitleCueCount);
         return;
       case "video.minAdDuration":
         formConfig.video.minAdDuration = this.readNumericValue(target.value, formConfig.video.minAdDuration);
@@ -1881,6 +1901,14 @@ export class ControlCenter {
         return;
       case "ai.prompt":
         formConfig.ai.prompt = target.value;
+        formConfig.ai.danmakuPrompt = target.value;
+        return;
+      case "ai.danmakuPrompt":
+        formConfig.ai.danmakuPrompt = target.value;
+        formConfig.ai.prompt = target.value;
+        return;
+      case "ai.subtitlePrompt":
+        formConfig.ai.subtitlePrompt = target.value;
         return;
       case "ai.whitelist":
         formConfig.ai.whitelist = linesToList(target.value);

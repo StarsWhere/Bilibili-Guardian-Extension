@@ -29,7 +29,7 @@ export const AI_PROVIDER_DEFAULTS: Record<
   }
 };
 
-export const DEFAULT_AGENT_PROMPT = `你是一个智能 agent，专门分析 Bilibili 视频的弹幕与评论，判断视频是否包含商业广告（恰饭）并输出结构化 JSON。
+export const DEFAULT_DANMAKU_PROMPT = `你是一个智能 agent，专门分析 Bilibili 视频的弹幕与评论，判断视频是否包含商业广告（恰饭）并输出结构化 JSON。
 
 任务：
 1. 阅读整理后的弹幕时间线。
@@ -48,6 +48,34 @@ export const DEFAULT_AGENT_PROMPT = `你是一个智能 agent，专门分析 Bil
 - 当 probability >= 30 时必须尽量给出 start 和 end。
 - 优先识别“空降”“指路”“感谢金主”“广告后”等路标型弹幕。
 - 忽略“正片”“省流”“总结”等常规内容提示。`;
+
+export const DEFAULT_AGENT_PROMPT = DEFAULT_DANMAKU_PROMPT;
+
+export const DEFAULT_SUBTITLE_PROMPT = `你是一个智能 agent，专门分析 Bilibili 视频字幕文本，判断视频中是否包含商业广告、赞助口播、推广植入或引导购买片段，并输出结构化 JSON。
+
+任务：
+1. 阅读带时间戳的字幕时间线。
+2. 找出所有适合自动跳过的广告片段，可以有多个区间。
+3. 每个区间都给出独立概率、起止时间与说明。
+
+要求：
+- 只返回 JSON。
+- 字段格式固定：
+{
+  "ranges": [
+    {
+      "probability": 0-100 的整数,
+      "start": "MM:SS 或 HH:MM:SS",
+      "end": "MM:SS 或 HH:MM:SS",
+      "note": "中文分析说明"
+    }
+  ],
+  "note": "整体中文分析说明"
+}
+- 没有广告时返回空数组 ranges。
+- 只标注商业广告、赞助、推广、带货、课程/软件/服务导流等片段。
+- 不要把片头寒暄、普通教程步骤、剧情解说、总结复盘标为广告。
+- 起止时间尽量贴近广告口播内容本身。`;
 
 export function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
@@ -101,12 +129,15 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
   video: {
     enabled: true,
     defaultAutoSkip: true,
+    subtitleAnalysisEnabled: true,
+    danmakuAnalysisEnabled: false,
     probabilityThreshold: 70,
     durationPenalty: 5,
     minAdDuration: 30,
     maxAdDuration: 300,
     minDanmakuForAnalysis: 20,
     maxDanmakuCount: 500,
+    maxSubtitleCueCount: 1200,
     cacheTtlMinutes: 240
   },
   ai: {
@@ -115,6 +146,8 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
     apiKey: "",
     model: AI_PROVIDER_DEFAULTS.openai.models[0],
     prompt: DEFAULT_AGENT_PROMPT,
+    danmakuPrompt: DEFAULT_DANMAKU_PROMPT,
+    subtitlePrompt: DEFAULT_SUBTITLE_PROMPT,
     requestTimeoutMs: 20000,
     whitelistEnabled: true,
     whitelistRegex: false,
@@ -142,6 +175,15 @@ export function mergeConfig(input: DeepPartial<ExtensionConfig> | undefined, cur
     return structuredClone(current);
   }
 
+  const legacyPrompt = input.ai?.prompt ?? current.ai.prompt;
+  const nextAi = {
+    ...current.ai,
+    ...input.ai,
+    prompt: legacyPrompt,
+    danmakuPrompt: input.ai?.danmakuPrompt ?? input.ai?.prompt ?? current.ai.danmakuPrompt ?? legacyPrompt,
+    subtitlePrompt: input.ai?.subtitlePrompt ?? current.ai.subtitlePrompt
+  };
+
   return {
     ui: {
       ...current.ui,
@@ -153,6 +195,6 @@ export function mergeConfig(input: DeepPartial<ExtensionConfig> | undefined, cur
     },
     feed: { ...current.feed, ...input.feed },
     video: { ...current.video, ...input.video },
-    ai: { ...current.ai, ...input.ai }
+    ai: nextAi
   };
 }
