@@ -126,8 +126,31 @@ export interface VideoAnalysisResult {
   note: string;
   source: "live" | "cache";
   cacheHit: boolean;
+  method?: "subtitle" | "danmaku" | "none";
+  ranges?: VideoAdRange[];
+  disabledRangeIds?: string[];
   danmakuCount: number;
+  subtitleCueCount?: number;
+  subtitleTrack?: VideoSubtitleTrackInfo | null;
   rawResponse?: string;
+}
+
+export interface VideoAdRange {
+  id: string;
+  start: string;
+  end: string;
+  probability: number;
+  finalProbability: number;
+  note: string;
+}
+
+export interface VideoSubtitleTrackInfo {
+  lan: string;
+  lanDoc: string;
+  type: number | null;
+  aiType: number | null;
+  aiStatus: number | null;
+  subtitleUrl: string;
 }
 
 export interface VideoAnalysisErrorDetails {

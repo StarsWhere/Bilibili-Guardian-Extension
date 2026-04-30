@@ -23,6 +23,26 @@ export function timeStringToSeconds(time: string | null | undefined): number {
   return parts[0] ?? 0;
 }
 
+export function isValidTimeString(time: string | null | undefined): time is string {
+  if (!time) {
+    return false;
+  }
+
+  const parts = String(time).trim().split(":");
+  if (parts.length < 2 || parts.length > 3) {
+    return false;
+  }
+
+  const numbers = parts.map((part) => Number(part));
+  if (numbers.some((part) => !Number.isFinite(part) || part < 0)) {
+    return false;
+  }
+
+  const minuteIndex = parts.length === 3 ? 1 : 0;
+  const secondIndex = parts.length === 3 ? 2 : 1;
+  return numbers[minuteIndex] < 60 && numbers[secondIndex] < 60;
+}
+
 export function secondsToTimeString(seconds: number): string {
   const safeSeconds = Math.max(0, Math.floor(seconds));
   const hours = Math.floor(safeSeconds / 3600);
