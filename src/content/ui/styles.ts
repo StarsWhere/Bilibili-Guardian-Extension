@@ -1117,6 +1117,94 @@ export function createStyles(): string {
       outline: none;
     }
 
+    .guardian-progress-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      pointer-events: none;
+    }
+
+    .guardian-progress-range {
+      position: absolute;
+      top: 50%;
+      height: 9px;
+      min-width: 4px;
+      transform: translateY(-50%);
+      border: 0;
+      border-radius: 2px;
+      background: rgba(255, 102, 153, 0.72);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55), 0 2px 8px rgba(0, 0, 0, 0.22);
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .guardian-progress-range:hover,
+    .guardian-progress-range:focus-visible {
+      background: rgba(255, 102, 153, 0.95);
+      outline: none;
+    }
+
+    .guardian-progress-range.disabled {
+      background: rgba(100, 112, 125, 0.45);
+    }
+
+    .guardian-progress-popover {
+      position: absolute;
+      bottom: 18px;
+      width: min(280px, calc(100vw - 24px));
+      transform: translateX(-50%);
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border-radius: var(--guardian-radius);
+      border: 1px solid var(--guardian-border);
+      background: var(--guardian-surface);
+      color: var(--guardian-text);
+      box-shadow: var(--guardian-shadow);
+      pointer-events: auto;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .guardian-progress-popover-head,
+    .guardian-progress-popover-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .guardian-progress-popover-head strong,
+    .guardian-progress-popover-head span,
+    .guardian-progress-popover-note,
+    .guardian-progress-popover-actions button {
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .guardian-progress-popover-note {
+      color: var(--guardian-muted);
+      max-height: 52px;
+      overflow: auto;
+    }
+
+    .guardian-progress-popover-actions button {
+      border: 1px solid var(--guardian-border);
+      border-radius: var(--guardian-radius-sm);
+      background: var(--guardian-bg-solid);
+      color: var(--guardian-text);
+      cursor: pointer;
+      padding: 5px 8px;
+    }
+
+    .guardian-progress-popover-actions button:hover,
+    .guardian-progress-popover-actions button:focus-visible {
+      background: var(--guardian-primary-soft);
+      border-color: rgba(11, 143, 189, 0.32);
+      color: var(--guardian-primary-strong);
+      outline: none;
+    }
+
     @keyframes guardianFadeIn {
       from {
         opacity: 0;

@@ -7,6 +7,7 @@ import type { GuardianPlatformServices } from "@/shared/platform";
 import type { RouteModule } from "@/shared/router";
 import type { DeepPartial, ExtensionConfig, VideoAnalysisErrorDetails } from "@/shared/types";
 import { classifyFeedPage, isVideoPage } from "@/shared/url";
+import { getEnabledVideoAdRanges } from "@/shared/videoResult";
 
 function hasOwnPatchField<T extends object, K extends PropertyKey>(
   patch: T,
@@ -72,6 +73,7 @@ export class GuardianApp {
         return app.config;
       },
       getCurrentVideoAutoSkip: () => this.runtime.currentVideoAutoSkip,
+      setCurrentVideoAutoSkip: (enabled) => this.setCurrentVideoAutoSkip(enabled),
       setCurrentVideoState: (patch) => {
         const previousPhase = this.runtime.videoPhase;
         const previousError = this.runtime.videoError;
@@ -97,11 +99,16 @@ export class GuardianApp {
       },
       log: (message) => this.log(message),
       logVideoDiagnostic: (details) => this.logVideoDiagnostic(details),
-      getCachedVideoResult: (bvid) => this.services.getCachedVideoResult(bvid),
+      openVideoSettings: () => {
+        void this.ui.openPanel("video");
+      },
+      getCachedVideoResult: (bvid, pageIndex) => this.services.getCachedVideoResult(bvid, pageIndex),
       analyzeVideo: (payload) => this.services.analyzeVideo(payload),
       cancelVideoAnalysis: async (requestId) => {
         await this.services.cancelVideoAnalysis(requestId);
-      }
+      },
+      setVideoRangeDisabled: (bvid, pageIndex, rangeId, disabled) =>
+        this.services.setVideoRangeDisabled(bvid, rangeId, disabled, pageIndex)
     });
 
     const routeModules: RouteModule[] = [
@@ -163,11 +170,7 @@ export class GuardianApp {
         onRunFeedScan: () => this.feedGuard.runScan(),
         onRunVideoAnalysis: () => this.videoGuard.rerun(true),
         onFetchModels: (provider, baseUrl) => this.services.fetchModels(provider, baseUrl),
-        onToggleCurrentVideoAutoSkip: (enabled) => {
-          this.runtime.currentVideoAutoSkip = enabled;
-          this.videoGuard.setAutoSkipEnabled(enabled);
-          this.render();
-        },
+        onToggleCurrentVideoAutoSkip: (enabled) => this.setCurrentVideoAutoSkip(enabled),
         onResetDiagnostics: () => {
           this.runtime.diagnostics = [];
           this.runtime.videoErrorDetails = null;
@@ -221,6 +224,12 @@ export class GuardianApp {
     }
   }
 
+  private setCurrentVideoAutoSkip(enabled: boolean): void {
+    this.runtime.currentVideoAutoSkip = enabled;
+    this.videoGuard.setAutoSkipEnabled(enabled);
+    this.render();
+  }
+
   private async saveConfig(patch: DeepPartial<ExtensionConfig>): Promise<void> {
     const previousConfig = this.config;
     this.config = await this.services.saveConfig(patch);
@@ -261,8 +270,10 @@ export class GuardianApp {
 
     if (this.runtime.videoPhase === "ready" && previousPhase !== "ready" && this.runtime.videoResult) {
       const result = this.runtime.videoResult;
-      if (result.finalProbability >= this.config.video.probabilityThreshold && result.start && result.end) {
-        this.ui.showEdgeToast(`识别完成，建议在 ${result.start} - ${result.end} 跳过。`, "success", {
+      const ranges = getEnabledVideoAdRanges(result, this.config.video.probabilityThreshold);
+      if (ranges.length > 0) {
+        const first = ranges[0];
+        this.ui.showEdgeToast(`识别完成，发现 ${ranges.length} 个可跳过区间，首段 ${first.start} - ${first.end}。`, "success", {
           durationMs: 3600
         });
       } else {
@@ -284,8 +295,8 @@ export class GuardianApp {
       return;
     }
 
-    if (this.runtime.videoPhase === "skipped" && previousPhase !== "skipped" && this.runtime.videoResult?.start && this.runtime.videoResult?.end) {
-      this.ui.showEdgeToast(`已自动跳过 ${this.runtime.videoResult.start} - ${this.runtime.videoResult.end}。`, "success", {
+    if (this.runtime.videoPhase === "skipped" && previousPhase !== "skipped") {
+      this.ui.showEdgeToast("已自动跳过广告区间。", "success", {
         durationMs: 3200
       });
     }

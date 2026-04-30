@@ -32,3 +32,8 @@ export function extractBvid(url: URL): string | null {
   const matched = url.pathname.match(/\/video\/(BV[0-9A-Za-z]+)/);
   return matched?.[1] ?? null;
 }
+
+export function extractPageIndex(url: URL): number {
+  const pageIndex = Number(url.searchParams.get("p") || "1");
+  return Number.isFinite(pageIndex) && pageIndex > 0 ? Math.floor(pageIndex) : 1;
+}

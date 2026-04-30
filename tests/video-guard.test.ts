@@ -15,6 +15,40 @@ function createResult(note: string): VideoAnalysisResult {
   };
 }
 
+function createMultiRangeResult(): VideoAnalysisResult {
+  return {
+    probability: 90,
+    finalProbability: 90,
+    start: "00:10",
+    end: "00:20",
+    note: "多段结果",
+    method: "subtitle",
+    ranges: [
+      {
+        id: "range-1",
+        start: "00:10",
+        end: "00:20",
+        probability: 90,
+        finalProbability: 90,
+        note: "第一段"
+      },
+      {
+        id: "range-2",
+        start: "00:30",
+        end: "00:40",
+        probability: 88,
+        finalProbability: 88,
+        note: "第二段"
+      }
+    ],
+    disabledRangeIds: [],
+    source: "live",
+    cacheHit: false,
+    danmakuCount: 0,
+    subtitleCueCount: 2
+  };
+}
+
 function createVideoStateStore() {
   const runtime = {
     phase: "idle",
@@ -75,14 +109,17 @@ describe("VideoGuard", () => {
         }
       },
       getCurrentVideoAutoSkip: () => false,
+      setCurrentVideoAutoSkip: vi.fn(),
       setCurrentVideoState: (patch) => {
         store.apply(patch as Record<string, unknown>);
       },
       log: vi.fn(),
       logVideoDiagnostic: vi.fn(),
+      openVideoSettings: vi.fn(),
       getCachedVideoResult: vi.fn().mockResolvedValue(null),
       analyzeVideo,
-      cancelVideoAnalysis
+      cancelVideoAnalysis,
+      setVideoRangeDisabled: vi.fn().mockResolvedValue(null)
     });
 
     const mountPromise = guard.mount(new URL("https://www.bilibili.com/video/BV1Collect123"));
@@ -149,14 +186,17 @@ describe("VideoGuard", () => {
         }
       },
       getCurrentVideoAutoSkip: () => false,
+      setCurrentVideoAutoSkip: vi.fn(),
       setCurrentVideoState: (patch) => {
         store.apply(patch as Record<string, unknown>);
       },
       log: vi.fn(),
       logVideoDiagnostic: vi.fn(),
+      openVideoSettings: vi.fn(),
       getCachedVideoResult: vi.fn().mockResolvedValue(null),
       analyzeVideo,
-      cancelVideoAnalysis: vi.fn().mockResolvedValue(undefined)
+      cancelVideoAnalysis: vi.fn().mockResolvedValue(undefined),
+      setVideoRangeDisabled: vi.fn().mockResolvedValue(null)
     });
 
     const mountPromise = guard.mount(new URL("https://www.bilibili.com/video/BV1Analyze123"));
@@ -176,5 +216,106 @@ describe("VideoGuard", () => {
     resolveFirst(createResult("stale result"));
     await mountPromise;
     expect(store.runtime.result?.note).toBe("new result");
+  });
+
+  it("skips multiple enabled ranges once and ignores disabled ranges", async () => {
+    document.body.innerHTML = "<video></video>";
+    const video = document.querySelector("video")!;
+    const result = {
+      ...createMultiRangeResult(),
+      disabledRangeIds: ["range-1"]
+    };
+    const store = createVideoStateStore();
+
+    const guard = new VideoGuard({
+      config: {
+        ...DEFAULT_CONFIG,
+        ai: {
+          ...DEFAULT_CONFIG.ai,
+          apiKey: "token"
+        }
+      },
+      getCurrentVideoAutoSkip: () => true,
+      setCurrentVideoAutoSkip: vi.fn(),
+      setCurrentVideoState: (patch) => {
+        store.apply(patch as Record<string, unknown>);
+      },
+      log: vi.fn(),
+      logVideoDiagnostic: vi.fn(),
+      openVideoSettings: vi.fn(),
+      getCachedVideoResult: vi.fn().mockResolvedValue(result),
+      analyzeVideo: vi.fn(),
+      cancelVideoAnalysis: vi.fn().mockResolvedValue(undefined),
+      setVideoRangeDisabled: vi.fn().mockResolvedValue(null)
+    });
+
+    await guard.mount(new URL("https://www.bilibili.com/video/BV1Skip123"));
+
+    video.currentTime = 12;
+    video.dispatchEvent(new Event("timeupdate"));
+    expect(video.currentTime).toBe(12);
+
+    video.currentTime = 32;
+    video.dispatchEvent(new Event("timeupdate"));
+    expect(video.currentTime).toBe(40);
+    expect(store.runtime.phase).toBe("skipped");
+
+    video.currentTime = 32;
+    video.dispatchEvent(new Event("timeupdate"));
+    expect(video.currentTime).toBe(32);
+  });
+
+  it("renders progress markers and persists per-range disable actions", async () => {
+    document.body.innerHTML = `
+      <div class="bpx-player-progress"></div>
+      <video></video>
+    `;
+    const video = document.querySelector("video")!;
+    Object.defineProperty(video, "duration", {
+      configurable: true,
+      value: 100
+    });
+    const result = createMultiRangeResult();
+    const updated = {
+      ...result,
+      disabledRangeIds: ["range-1"]
+    };
+    const setVideoRangeDisabled = vi.fn().mockResolvedValue(updated);
+    const store = createVideoStateStore();
+
+    const guard = new VideoGuard({
+      config: {
+        ...DEFAULT_CONFIG,
+        ai: {
+          ...DEFAULT_CONFIG.ai,
+          apiKey: "token"
+        }
+      },
+      getCurrentVideoAutoSkip: () => true,
+      setCurrentVideoAutoSkip: vi.fn(),
+      setCurrentVideoState: (patch) => {
+        store.apply(patch as Record<string, unknown>);
+      },
+      log: vi.fn(),
+      logVideoDiagnostic: vi.fn(),
+      openVideoSettings: vi.fn(),
+      getCachedVideoResult: vi.fn().mockResolvedValue(result),
+      analyzeVideo: vi.fn(),
+      cancelVideoAnalysis: vi.fn().mockResolvedValue(undefined),
+      setVideoRangeDisabled
+    });
+
+    await guard.mount(new URL("https://www.bilibili.com/video/BV1Progress123"));
+
+    const markers = document.querySelectorAll<HTMLElement>(".guardian-progress-range");
+    expect(markers).toHaveLength(2);
+
+    markers[0].click();
+    document.querySelector<HTMLElement>("[data-action='toggle-range']")?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setVideoRangeDisabled).toHaveBeenCalledWith("BV1Progress123", 1, "range-1", true);
+    expect(store.runtime.result?.disabledRangeIds).toContain("range-1");
   });
 });
