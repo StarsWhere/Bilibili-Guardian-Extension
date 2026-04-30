@@ -1718,7 +1718,18 @@ export function createVideoAnalysisService(
               const cues = await fetchSubtitleJson(client, selectedTrack.subtitleUrl);
               const transcript = subtitleCuesToTimedText(cues, config);
               if (!transcript.text) {
-                subtitleUnavailableReason = "字幕正文为空。";
+                if (transcript.filterApplied && transcript.originalCount > 0) {
+                  subtitleUnavailableReason = "字幕筛选未发现广告候选。";
+                  if (!config.video.danmakuAnalysisEnabled) {
+                    return {
+                      ...createNoAnalysisResult("字幕筛选未发现广告候选，已跳过 AI 分析。", "subtitle"),
+                      subtitleCueCount: 0,
+                      subtitleTrack: selectedTrack
+                    };
+                  }
+                } else {
+                  subtitleUnavailableReason = "字幕正文为空。";
+                }
               } else {
                 subtitleTextReady = true;
                 const { result, rawResponse } = await callAiProvider(
