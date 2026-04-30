@@ -101,6 +101,7 @@ npm run release:prepare
 - 根据最新 tag 自动计算下一个版本
 - 更新 `package.json`
 - 更新 `public/manifest.json`
+- 更新 `README.md` 顶部的当前版本号
 
 同时它会输出：
 
@@ -141,7 +142,7 @@ userscript 单文件：
 ### 5. 提交版本文件并打 tag
 
 ```bash
-git add package.json public/manifest.json
+git add package.json public/manifest.json README.md
 git commit -m "chore(release): vX.Y.Z [skip release]"
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 ```
@@ -189,10 +190,11 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z"
 
 ### 版本号不同步
 
-当前版本源只有两处需要持久同步：
+当前版本源有三处需要持久同步：
 
 - `package.json`
 - `public/manifest.json`
+- `README.md`
 
 userscript metadata 的版本会在构建时从 `package.json` 动态读取，不需要手工维护第三份版本号。
 
