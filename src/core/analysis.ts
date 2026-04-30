@@ -12,7 +12,7 @@ import type { HttpClient } from "./http";
 import { fetchModelsWithClient, getProviderBaseUrl, type EnsureOriginAccess } from "./providers";
 import { getCustomBaseUrlValidationError } from "@/shared/config";
 import { createErrorWithDetails } from "@/shared/errors";
-import { clamp, isValidTimeString, normalizeAdRange, secondsToTimeString, timeStringToSeconds } from "@/shared/time";
+import { clamp, isValidTimeString, secondsToTimeString, timeStringToSeconds } from "@/shared/time";
 import type {
   AIProvider,
   BackgroundAnalyzeVideoPayload,
@@ -1176,46 +1176,55 @@ function calculateRangeFinalProbability(
     return null;
   }
 
-  let start = range.start;
-  let end = range.end;
-  const normalizedRange = normalizeAdRange(start, end, config.video.minAdDuration);
-  if (!normalizedRange.start || !normalizedRange.end || !isValidTimeString(normalizedRange.start) || !isValidTimeString(normalizedRange.end)) {
-    return null;
-  }
-
-  start = normalizedRange.start;
-  end = normalizedRange.end;
-
-  const baseProbability = clamp(Math.round(range.probability), 0, 100);
-  let finalProbability = baseProbability;
-  const duration = timeStringToSeconds(end) - timeStringToSeconds(start);
+  const start = range.start;
+  const end = range.end;
+  const startSeconds = timeStringToSeconds(start);
+  const endSeconds = timeStringToSeconds(end);
+  const duration = endSeconds - startSeconds;
   if (duration <= 0) {
     return null;
   }
 
-  if (duration > config.video.maxAdDuration) {
-    const overflowMinutes = (duration - config.video.maxAdDuration) / 60;
-    finalProbability -= overflowMinutes * config.video.durationPenalty;
+  if (startSeconds < Math.max(0, config.video.introGuardSeconds)) {
+    return null;
   }
+
+  if (duration > Math.max(1, config.video.maxSkipDurationSeconds)) {
+    return null;
+  }
+
+  const baseProbability = clamp(Math.round(range.probability), 0, 100);
 
   return {
     id: createRangeId(method, start, end, index),
     start,
     end,
     probability: baseProbability,
-    finalProbability: clamp(Math.round(finalProbability), 0, 100),
+    finalProbability: baseProbability,
     note: range.note?.trim() || "AI 未返回说明"
   };
 }
 
+function appendFilteredRangeSummary(note: string, filteredCount: number): string {
+  const baseNote = note.trim() || "AI 未返回说明";
+  if (filteredCount <= 0) {
+    return baseNote;
+  }
+
+  return `${baseNote} 已过滤 ${filteredCount} 个异常区间。`;
+}
+
 function calculateDanmakuFinalProbability(result: AiResultShape, config: ExtensionConfig): VideoAnalysisResult {
   const baseProbability = clamp(Math.round(result.probability), 0, 100);
-  const range = result.start && result.end
+  const candidateStart = typeof result.start === "string" ? result.start : null;
+  const candidateEnd = typeof result.end === "string" ? result.end : null;
+  const hasRangeCandidate = candidateStart !== null && candidateEnd !== null;
+  const range = hasRangeCandidate
     ? calculateRangeFinalProbability(
         {
           probability: result.probability,
-          start: result.start,
-          end: result.end,
+          start: candidateStart,
+          end: candidateEnd,
           note: result.note
         },
         config,
@@ -1223,13 +1232,14 @@ function calculateDanmakuFinalProbability(result: AiResultShape, config: Extensi
         0
       )
     : null;
+  const filteredCount = hasRangeCandidate && !range ? 1 : 0;
 
   return normalizeVideoAnalysisResult({
     probability: baseProbability,
     finalProbability: range?.finalProbability ?? baseProbability,
     start: range?.start ?? null,
     end: range?.end ?? null,
-    note: result.note?.trim() || "AI 未返回说明",
+    note: appendFilteredRangeSummary(result.note, filteredCount),
     method: "danmaku",
     ranges: range ? [range] : [],
     disabledRangeIds: [],
@@ -1244,13 +1254,18 @@ function calculateSubtitleFinalProbability(result: AiSubtitleResultShape, config
     .map((range, index) => calculateRangeFinalProbability(range, config, "subtitle", index))
     .filter((range): range is VideoAdRange => Boolean(range));
   const topRange = [...ranges].sort((left, right) => right.finalProbability - left.finalProbability)[0] ?? null;
+  const filteredCount = result.ranges.length - ranges.length;
+  const note = appendFilteredRangeSummary(
+    result.note || topRange?.note || (ranges.length > 0 ? "字幕识别完成。" : "字幕识别完成，未发现明确广告区间。"),
+    filteredCount
+  );
 
   return normalizeVideoAnalysisResult({
     probability: topRange?.probability ?? 0,
     finalProbability: topRange?.finalProbability ?? 0,
     start: topRange?.start ?? null,
     end: topRange?.end ?? null,
-    note: result.note || topRange?.note || (ranges.length > 0 ? "字幕识别完成。" : "字幕识别完成，未发现明确广告区间。"),
+    note,
     method: "subtitle",
     ranges,
     disabledRangeIds: [],

@@ -135,6 +135,62 @@ describe("ControlCenter advanced settings", () => {
     expect(options).toContain("custom-model-b");
   });
 
+  it("uses video safety preference fields instead of legacy duration correction fields", async () => {
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: true,
+        activeTab: "advanced"
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        apiKey: "token"
+      }
+    };
+    const onSaveConfig = vi.fn().mockResolvedValue(undefined);
+    const controlCenter = new ControlCenter(config, createRuntime(), {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig,
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    const modalText = document.querySelector<HTMLElement>(".guardian-modal")?.textContent ?? "";
+    expect(modalText).toContain("片头保护（秒）");
+    expect(modalText).toContain("最长可跳片段（秒）");
+    expect(modalText).not.toContain("长内容修正");
+    expect(document.querySelector("[data-field='video.durationPenalty']")).toBeNull();
+    expect(document.querySelector("[data-field='video.minAdDuration']")).toBeNull();
+    expect(document.querySelector("[data-field='video.maxAdDuration']")).toBeNull();
+
+    const introGuardInput = document.querySelector<HTMLInputElement>("[data-field='video.introGuardSeconds']");
+    const maxSkipInput = document.querySelector<HTMLInputElement>("[data-field='video.maxSkipDurationSeconds']");
+    introGuardInput!.value = "45";
+    introGuardInput!.dispatchEvent(new Event("input", { bubbles: true }));
+    maxSkipInput!.value = "240";
+    maxSkipInput!.dispatchEvent(new Event("input", { bubbles: true }));
+
+    document.querySelector<HTMLElement>("[data-action='save-preferences']")?.click();
+    await flushPromises();
+
+    expect(onSaveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        video: expect.objectContaining({
+          introGuardSeconds: 45,
+          maxSkipDurationSeconds: 240
+        })
+      })
+    );
+  });
+
   it("syncs provider changes with default base url and restores custom draft", async () => {
     const config: ExtensionConfig = {
       ...DEFAULT_CONFIG,

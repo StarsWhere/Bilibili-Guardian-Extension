@@ -57,9 +57,8 @@ export interface ExtensionConfig {
     subtitleAnalysisEnabled: boolean;
     danmakuAnalysisEnabled: boolean;
     probabilityThreshold: number;
-    durationPenalty: number;
-    minAdDuration: number;
-    maxAdDuration: number;
+    introGuardSeconds: number;
+    maxSkipDurationSeconds: number;
     minDanmakuForAnalysis: number;
     maxDanmakuCount: number;
     maxSubtitleCueCount: number;

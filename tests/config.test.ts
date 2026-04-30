@@ -15,6 +15,8 @@ describe("mergeConfig", () => {
     expect(merged.ai.provider).toBe(DEFAULT_CONFIG.ai.provider);
     expect(merged.video.subtitleAnalysisEnabled).toBe(true);
     expect(merged.video.danmakuAnalysisEnabled).toBe(false);
+    expect(merged.video.introGuardSeconds).toBe(30);
+    expect(merged.video.maxSkipDurationSeconds).toBe(300);
   });
 
   it("migrates the legacy prompt to the danmaku prompt while keeping subtitle prompt defaults", () => {

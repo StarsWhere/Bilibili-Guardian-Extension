@@ -10,6 +10,101 @@ const context = {
   requestId: "BV1test-123"
 };
 
+function createSubtitleAnalysisClient(aiContent: string): HttpClient {
+  return {
+    requestJson: vi.fn(async (url: string) => {
+      if (url.includes("/x/web-interface/view")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              aid: 100,
+              bvid: "BV1subtitle",
+              cid: 200,
+              title: "字幕测试",
+              pages: [{ cid: 200 }]
+            }
+          }
+        };
+      }
+
+      if (url.includes("/x/web-interface/nav")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              wbi_img: {
+                img_url: "https://i0.hdslb.com/bfs/wbi/abcdefghijklmnopqrstuvwxyz1234567890abcdefabcdefabcdefab.png",
+                sub_url: "https://i0.hdslb.com/bfs/wbi/1234567890abcdefghijklmnopqrstuvwxyzabcdefabcdefabcd.png"
+              }
+            }
+          }
+        };
+      }
+
+      if (url.includes("/x/player/wbi/v2") || url.includes("/x/player/v2")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            code: 0,
+            data: {
+              subtitle: {
+                subtitles: [
+                  {
+                    lan: "zh-CN",
+                    lan_doc: "中文（自动生成）",
+                    type: 1,
+                    ai_type: 0,
+                    ai_status: 2,
+                    subtitle_url: "https://aisubtitle.hdslb.com/subtitle.json"
+                  }
+                ]
+              }
+            }
+          }
+        };
+      }
+
+      if (url.includes("aisubtitle.hdslb.com/subtitle.json")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            body: [
+              { from: 10, to: 16, content: "本期视频由某某赞助" },
+              { from: 40, to: 50, content: "点击链接购买课程" }
+            ]
+          }
+        };
+      }
+
+      if (url.includes("/chat/completions")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            choices: [
+              {
+                message: {
+                  content: aiContent
+                }
+              }
+            ]
+          }
+        };
+      }
+
+      throw new Error(`unexpected JSON request: ${url}`);
+    }) as HttpClient["requestJson"],
+    requestText: vi.fn()
+  };
+}
+
 describe("parseAiResponse", () => {
   it("extracts text from content part arrays in OpenAI-compatible responses", () => {
     expect(
@@ -281,7 +376,7 @@ describe("parseAiResponse", () => {
             choices: [
               {
                 message: {
-                  content: "{\"ranges\":[{\"probability\":84,\"start\":\"00:10\",\"end\":\"00:28\",\"note\":\"片头赞助\"},{\"probability\":76,\"start\":\"02:00\",\"end\":\"02:20\",\"note\":\"中段推广\"}],\"note\":\"字幕命中两段\"}"
+                  content: "{\"ranges\":[{\"probability\":84,\"start\":\"00:40\",\"end\":\"00:50\",\"note\":\"片头赞助\"},{\"probability\":76,\"start\":\"02:00\",\"end\":\"02:20\",\"note\":\"中段推广\"}],\"note\":\"字幕命中两段\"}"
                 }
               }
             ]
@@ -315,8 +410,47 @@ describe("parseAiResponse", () => {
     expect(result.method).toBe("subtitle");
     expect(result.ranges).toHaveLength(2);
     expect(result.finalProbability).toBe(84);
+    expect(result.ranges?.[0]).toMatchObject({
+      start: "00:40",
+      end: "00:50"
+    });
     expect(result.subtitleCueCount).toBe(2);
     expect(result.subtitleTrack?.lan).toBe("zh-CN");
+  });
+
+  it("filters unsafe subtitle ranges without rewriting valid short ranges", async () => {
+    const service = createVideoAnalysisService(createSubtitleAnalysisClient(
+      "{\"ranges\":[{\"probability\":91,\"start\":\"00:05\",\"end\":\"00:20\",\"note\":\"片头误判\"},{\"probability\":92,\"start\":\"01:00\",\"end\":\"00:50\",\"note\":\"反向区间\"},{\"probability\":93,\"start\":\"10:00\",\"end\":\"20:01\",\"note\":\"过长区间\"},{\"probability\":88,\"start\":\"00:40\",\"end\":\"00:50\",\"note\":\"短但合法\"}],\"note\":\"混合区间\"}"
+    ));
+    const result = await service.analyzeVideo(
+      {
+        bvid: "BV1subtitleFilter",
+        pageIndex: 1,
+        topComment: "首条评论：测试",
+        requestId: "BV1subtitleFilter-123"
+      },
+      {
+        ...DEFAULT_CONFIG,
+        ai: {
+          ...DEFAULT_CONFIG.ai,
+          apiKey: "token"
+        }
+      }
+    );
+
+    expect(result.ranges).toEqual([
+      {
+        id: "subtitle-4-0040-0050",
+        start: "00:40",
+        end: "00:50",
+        probability: 88,
+        finalProbability: 88,
+        note: "短但合法"
+      }
+    ]);
+    expect(result.start).toBe("00:40");
+    expect(result.end).toBe("00:50");
+    expect(result.note).toContain("已过滤 3 个异常区间。");
   });
 
   it("falls back to danmaku only when subtitles are unavailable and danmaku analysis is enabled", async () => {
@@ -856,7 +990,7 @@ describe("parseAiResponse", () => {
           status: 200,
           data: [
             "event: response.output_text.delta",
-            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"{\\\"probability\\\":64,\\\"start\\\":\\\"00:10\\\",\\\"end\\\":\\\"00:35\\\",\\\"note\\\":\\\"流式恢复成功\\\"}\"}",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"{\\\"probability\\\":64,\\\"start\\\":\\\"00:40\\\",\\\"end\\\":\\\"00:55\\\",\\\"note\\\":\\\"流式恢复成功\\\"}\"}",
             "",
             "event: response.completed",
             "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_stream\",\"object\":\"response\",\"status\":\"completed\",\"output\":[]}}",
@@ -897,8 +1031,8 @@ describe("parseAiResponse", () => {
     );
 
     expect(result.finalProbability).toBe(64);
-    expect(result.start).toBe("00:10");
-    expect(result.end).toBe("00:40");
+    expect(result.start).toBe("00:40");
+    expect(result.end).toBe("00:55");
     expect(result.note).toBe("流式恢复成功");
     expect(requestText).toHaveBeenCalledWith(
       expect.stringContaining("/responses"),

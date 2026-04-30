@@ -1148,20 +1148,17 @@ export class ControlCenter {
               ${this.renderChoiceItem("忽略参考词使用正则", 'data-field="ai.blacklistRegex"', formConfig.ai.blacklistRegex)}
             </div>
             <div class="guardian-grid-2">
-              <label class="guardian-label">长内容修正
-                <input class="guardian-field" data-field="video.durationPenalty" type="number" min="0" value="${formConfig.video.durationPenalty}">
-              </label>
               <label class="guardian-label">最少参考弹幕数
                 <input class="guardian-field" data-field="video.minDanmakuForAnalysis" type="number" min="1" value="${formConfig.video.minDanmakuForAnalysis}">
               </label>
               <label class="guardian-label">最多参考字幕条数
                 <input class="guardian-field" data-field="video.maxSubtitleCueCount" type="number" min="1" value="${formConfig.video.maxSubtitleCueCount}">
               </label>
-              <label class="guardian-label">最短片段时长（秒）
-                <input class="guardian-field" data-field="video.minAdDuration" type="number" min="1" value="${formConfig.video.minAdDuration}">
+              <label class="guardian-label">片头保护（秒）
+                <input class="guardian-field" data-field="video.introGuardSeconds" type="number" min="0" value="${formConfig.video.introGuardSeconds}">
               </label>
-              <label class="guardian-label">最长片段时长（秒）
-                <input class="guardian-field" data-field="video.maxAdDuration" type="number" min="1" value="${formConfig.video.maxAdDuration}">
+              <label class="guardian-label">最长可跳片段（秒）
+                <input class="guardian-field" data-field="video.maxSkipDurationSeconds" type="number" min="1" value="${formConfig.video.maxSkipDurationSeconds}">
               </label>
             </div>
             <div class="guardian-actions">
@@ -1694,11 +1691,10 @@ export class ControlCenter {
         },
         video: {
           ...this.config.video,
-          durationPenalty: formConfig.video.durationPenalty,
           minDanmakuForAnalysis: formConfig.video.minDanmakuForAnalysis,
           maxSubtitleCueCount: formConfig.video.maxSubtitleCueCount,
-          minAdDuration: formConfig.video.minAdDuration,
-          maxAdDuration: formConfig.video.maxAdDuration
+          introGuardSeconds: formConfig.video.introGuardSeconds,
+          maxSkipDurationSeconds: formConfig.video.maxSkipDurationSeconds
         }
       },
       "识别偏好已保存。"
@@ -1892,20 +1888,17 @@ export class ControlCenter {
       case "video.cacheTtlMinutes":
         formConfig.video.cacheTtlMinutes = this.readNumericValue(target.value, formConfig.video.cacheTtlMinutes);
         return;
-      case "video.durationPenalty":
-        formConfig.video.durationPenalty = this.readNumericValue(target.value, formConfig.video.durationPenalty);
-        return;
       case "video.minDanmakuForAnalysis":
         formConfig.video.minDanmakuForAnalysis = this.readNumericValue(target.value, formConfig.video.minDanmakuForAnalysis);
         return;
       case "video.maxSubtitleCueCount":
         formConfig.video.maxSubtitleCueCount = this.readNumericValue(target.value, formConfig.video.maxSubtitleCueCount);
         return;
-      case "video.minAdDuration":
-        formConfig.video.minAdDuration = this.readNumericValue(target.value, formConfig.video.minAdDuration);
+      case "video.introGuardSeconds":
+        formConfig.video.introGuardSeconds = this.readNumericValue(target.value, formConfig.video.introGuardSeconds);
         return;
-      case "video.maxAdDuration":
-        formConfig.video.maxAdDuration = this.readNumericValue(target.value, formConfig.video.maxAdDuration);
+      case "video.maxSkipDurationSeconds":
+        formConfig.video.maxSkipDurationSeconds = this.readNumericValue(target.value, formConfig.video.maxSkipDurationSeconds);
         return;
       case "ai.provider":
         if (target instanceof HTMLSelectElement) {

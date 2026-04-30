@@ -60,32 +60,3 @@ export function secondsToTimeString(seconds: number): string {
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
-
-export function normalizeAdRange(
-  start: string | null,
-  end: string | null,
-  minimumDurationSeconds: number
-): { start: string | null; end: string | null } {
-  if (!start || !end) {
-    return { start, end };
-  }
-
-  const startSeconds = timeStringToSeconds(start);
-  const endSeconds = timeStringToSeconds(end);
-
-  if (endSeconds <= startSeconds) {
-    return {
-      start,
-      end: secondsToTimeString(startSeconds + minimumDurationSeconds)
-    };
-  }
-
-  if (endSeconds - startSeconds < minimumDurationSeconds) {
-    return {
-      start,
-      end: secondsToTimeString(startSeconds + minimumDurationSeconds)
-    };
-  }
-
-  return { start, end };
-}
