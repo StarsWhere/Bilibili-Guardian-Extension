@@ -160,14 +160,68 @@ function filterDanmakuText(xml: string, config: ExtensionConfig): { text: string
   };
 }
 
-function subtitleCuesToTimedText(cues: BilibiliSubtitleCue[], config: ExtensionConfig): { text: string; count: number } {
+export function filterSubtitleCuesForAnalysis(cues: BilibiliSubtitleCue[], config: ExtensionConfig): BilibiliSubtitleCue[] {
   const safeLimit = Math.max(1, config.video.maxSubtitleCueCount);
-  const selected = cues.slice(0, safeLimit);
+  if (!config.video.subtitleFilterEnabled) {
+    return cues.slice(0, safeLimit);
+  }
+
+  const ordered = [...cues].sort((left, right) => left.from - right.from);
+  const whitelist = sanitizeList(config.ai.subtitleWhitelist);
+  const blacklist = sanitizeList(config.ai.subtitleBlacklist);
+  const seedCues = ordered.filter((cue) => {
+    const content = cue.content;
+    const blacklisted = config.ai.subtitleBlacklistEnabled &&
+      blacklist.length > 0 &&
+      matchesPattern(content, blacklist, config.ai.subtitleBlacklistRegex);
+    if (blacklisted) {
+      return false;
+    }
+
+    return !config.ai.subtitleWhitelistEnabled ||
+      whitelist.length === 0 ||
+      matchesPattern(content, whitelist, config.ai.subtitleWhitelistRegex);
+  });
+
+  if (seedCues.length === 0) {
+    return [];
+  }
+
+  const contextSeconds = Math.max(0, config.video.subtitleFilterContextSeconds);
+  const windows = seedCues
+    .map((cue) => ({
+      start: Math.max(0, cue.from - contextSeconds),
+      end: cue.to + contextSeconds
+    }))
+    .sort((left, right) => left.start - right.start);
+  const mergedWindows: Array<{ start: number; end: number }> = [];
+  for (const window of windows) {
+    const previous = mergedWindows.at(-1);
+    if (!previous || window.start > previous.end) {
+      mergedWindows.push({ ...window });
+      continue;
+    }
+
+    previous.end = Math.max(previous.end, window.end);
+  }
+
+  return ordered
+    .filter((cue) => mergedWindows.some((window) => cue.to >= window.start && cue.from <= window.end))
+    .slice(0, safeLimit);
+}
+
+function subtitleCuesToTimedText(
+  cues: BilibiliSubtitleCue[],
+  config: ExtensionConfig
+): { text: string; count: number; filterApplied: boolean; originalCount: number } {
+  const selected = filterSubtitleCuesForAnalysis(cues, config);
   return {
     text: selected
       .map((cue) => `${secondsToTimeString(cue.from)} --> ${secondsToTimeString(cue.to)}  ${cue.content.replace(/\s+/g, " ").trim()}`)
       .join("\n"),
-    count: selected.length
+    count: selected.length,
+    filterApplied: config.video.subtitleFilterEnabled,
+    originalCount: cues.length
   };
 }
 

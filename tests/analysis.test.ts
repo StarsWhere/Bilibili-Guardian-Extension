@@ -1,7 +1,13 @@
 import { DEFAULT_CONFIG } from "@/shared/config";
 import { getVideoAnalysisErrorDetails } from "@/shared/errors";
 import { selectBestSubtitleTrack } from "@/core/bilibili";
-import { createVideoAnalysisService, extractOpenAiCompatibleResponse, parseAiResponse, parseSubtitleAiResponse } from "@/core/analysis";
+import {
+  createVideoAnalysisService,
+  extractOpenAiCompatibleResponse,
+  filterSubtitleCuesForAnalysis,
+  parseAiResponse,
+  parseSubtitleAiResponse
+} from "@/core/analysis";
 import type { HttpClient } from "@/core/http";
 
 const context = {
@@ -294,6 +300,82 @@ describe("parseAiResponse", () => {
       ],
       note: "两段广告"
     });
+  });
+
+  it("keeps old subtitle cue limiting behavior when subtitle filtering is disabled", () => {
+    const cues = Array.from({ length: 5 }, (_, index) => ({
+      from: index * 10,
+      to: index * 10 + 5,
+      content: `普通字幕 ${index}`
+    }));
+
+    const selected = filterSubtitleCuesForAnalysis(cues, {
+      ...DEFAULT_CONFIG,
+      video: {
+        ...DEFAULT_CONFIG.video,
+        subtitleFilterEnabled: false,
+        maxSubtitleCueCount: 2
+      }
+    });
+
+    expect(selected.map((cue) => cue.content)).toEqual(["普通字幕 0", "普通字幕 1"]);
+  });
+
+  it("filters subtitle cues by commercial seed windows and keeps nearby context", () => {
+    const cues = [
+      { from: 0, to: 5, content: "开场寒暄" },
+      { from: 20, to: 25, content: "今天进入正题" },
+      { from: 50, to: 55, content: "本期视频由某某赞助" },
+      { from: 80, to: 85, content: "使用优惠码可以打折" },
+      { from: 160, to: 165, content: "完全无关的正片内容" }
+    ];
+
+    const selected = filterSubtitleCuesForAnalysis(cues, {
+      ...DEFAULT_CONFIG,
+      video: {
+        ...DEFAULT_CONFIG.video,
+        subtitleFilterContextSeconds: 30
+      }
+    });
+
+    expect(selected.map((cue) => cue.content)).toEqual([
+      "今天进入正题",
+      "本期视频由某某赞助",
+      "使用优惠码可以打折"
+    ]);
+  });
+
+  it("does not use subtitle blacklist matches as seeds but can keep them as context", () => {
+    const cues = [
+      { from: 10, to: 15, content: "点赞投币三连" },
+      { from: 40, to: 45, content: "本期赞助商提供优惠码" },
+      { from: 55, to: 60, content: "记得关注收藏" }
+    ];
+
+    const selected = filterSubtitleCuesForAnalysis(cues, {
+      ...DEFAULT_CONFIG,
+      video: {
+        ...DEFAULT_CONFIG.video,
+        subtitleFilterContextSeconds: 20
+      }
+    });
+
+    expect(selected.map((cue) => cue.content)).toEqual([
+      "本期赞助商提供优惠码",
+      "记得关注收藏"
+    ]);
+  });
+
+  it("returns no subtitle candidates when only subtitle blacklist terms match", () => {
+    const selected = filterSubtitleCuesForAnalysis(
+      [
+        { from: 10, to: 15, content: "点赞投币三连" },
+        { from: 40, to: 45, content: "正片开始" }
+      ],
+      DEFAULT_CONFIG
+    );
+
+    expect(selected).toEqual([]);
   });
 
   it("analyzes subtitles into multiple skip ranges", async () => {
