@@ -2,7 +2,7 @@
 
 一个给 Bilibili 用户使用的清理工具，把“推荐流过滤”和“视频广告识别/自动跳过”整合进同一套页面内控制中心。
 
-- 当前版本：`0.1.4`
+- 当前版本：`0.1.16`
 - 安装形态：Chrome / Edge Manifest V3 扩展、Tampermonkey 单文件 userscript
 - 适用页面：`https://www.bilibili.com/*`
 - License：`MIT`
