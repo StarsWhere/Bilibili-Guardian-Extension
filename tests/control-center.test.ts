@@ -191,6 +191,76 @@ describe("ControlCenter advanced settings", () => {
     );
   });
 
+  it("saves subtitle filtering preferences separately from danmaku term lists", async () => {
+    const config: ExtensionConfig = {
+      ...DEFAULT_CONFIG,
+      ui: {
+        ...DEFAULT_CONFIG.ui,
+        panelOpen: true,
+        activeTab: "advanced"
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        apiKey: "token"
+      }
+    };
+    const onSaveConfig = vi.fn().mockResolvedValue(undefined);
+    const controlCenter = new ControlCenter(config, createRuntime(), {
+      onTogglePanel: vi.fn(),
+      onSetTheme: vi.fn(),
+      onSaveConfig,
+      onRunFeedScan: vi.fn(),
+      onRunVideoAnalysis: vi.fn(),
+      onFetchModels: vi.fn().mockResolvedValue([]),
+      onToggleCurrentVideoAutoSkip: vi.fn(),
+      onResetDiagnostics: vi.fn(),
+      onMoveButton: vi.fn()
+    });
+
+    controlCenter.mount();
+
+    expect(document.querySelector<HTMLElement>(".guardian-modal")?.textContent).toContain("字幕候选筛选");
+    expect(document.querySelector<HTMLElement>(".guardian-modal")?.textContent).toContain("弹幕优先参考词");
+
+    const filterEnabled = document.querySelector<HTMLInputElement>("[data-field='video.subtitleFilterEnabled']");
+    const contextInput = document.querySelector<HTMLInputElement>("[data-field='video.subtitleFilterContextSeconds']");
+    const subtitleWhitelist = document.querySelector<HTMLTextAreaElement>("[data-field='ai.subtitleWhitelist']");
+    const subtitleBlacklist = document.querySelector<HTMLTextAreaElement>("[data-field='ai.subtitleBlacklist']");
+    const danmakuWhitelist = document.querySelector<HTMLTextAreaElement>("[data-field='ai.whitelist']");
+    const subtitleWhitelistRegex = document.querySelector<HTMLInputElement>("[data-field='ai.subtitleWhitelistRegex']");
+
+    filterEnabled!.checked = false;
+    filterEnabled!.dispatchEvent(new Event("change", { bubbles: true }));
+    contextInput!.value = "60";
+    contextInput!.dispatchEvent(new Event("input", { bubbles: true }));
+    subtitleWhitelist!.value = "赞助\n优惠码";
+    subtitleWhitelist!.dispatchEvent(new Event("input", { bubbles: true }));
+    subtitleBlacklist!.value = "三连\n正片";
+    subtitleBlacklist!.dispatchEvent(new Event("input", { bubbles: true }));
+    danmakuWhitelist!.value = "空降测试";
+    danmakuWhitelist!.dispatchEvent(new Event("input", { bubbles: true }));
+    subtitleWhitelistRegex!.checked = true;
+    subtitleWhitelistRegex!.dispatchEvent(new Event("change", { bubbles: true }));
+
+    document.querySelector<HTMLElement>("[data-action='save-preferences']")?.click();
+    await flushPromises();
+
+    expect(onSaveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        video: expect.objectContaining({
+          subtitleFilterEnabled: false,
+          subtitleFilterContextSeconds: 60
+        }),
+        ai: expect.objectContaining({
+          subtitleWhitelist: ["赞助", "优惠码"],
+          subtitleBlacklist: ["三连", "正片"],
+          subtitleWhitelistRegex: true,
+          whitelist: ["空降测试"]
+        })
+      })
+    );
+  });
+
   it("syncs provider changes with default base url and restores custom draft", async () => {
     const config: ExtensionConfig = {
       ...DEFAULT_CONFIG,

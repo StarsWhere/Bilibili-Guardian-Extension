@@ -1133,23 +1133,43 @@ export class ControlCenter {
             <label class="guardian-label">弹幕识别说明词
               <textarea class="guardian-textarea guardian-textarea-lg" data-field="ai.danmakuPrompt" placeholder="用于弹幕和评论识别">${escapeHtml(formConfig.ai.danmakuPrompt)}</textarea>
             </label>
+            <div class="guardian-stack">
+              ${this.renderSwitchField("video.subtitleFilterEnabled", "启用字幕候选筛选", "只把命中商业意图词附近的字幕发送给 AI，减少无关片段。", formConfig.video.subtitleFilterEnabled)}
+            </div>
             <div class="guardian-grid-2">
-              <label class="guardian-label">优先参考词
+              <label class="guardian-label">字幕优先参考词
+                <textarea class="guardian-textarea" data-field="ai.subtitleWhitelist" placeholder="每行填写一个词">${escapeHtml(listToLines(formConfig.ai.subtitleWhitelist))}</textarea>
+              </label>
+              <label class="guardian-label">字幕忽略参考词
+                <textarea class="guardian-textarea" data-field="ai.subtitleBlacklist" placeholder="每行填写一个词">${escapeHtml(listToLines(formConfig.ai.subtitleBlacklist))}</textarea>
+              </label>
+            </div>
+            <div class="guardian-choice-grid">
+              ${this.renderChoiceItem("启用字幕优先参考词", 'data-field="ai.subtitleWhitelistEnabled"', formConfig.ai.subtitleWhitelistEnabled)}
+              ${this.renderChoiceItem("字幕优先参考词使用正则", 'data-field="ai.subtitleWhitelistRegex"', formConfig.ai.subtitleWhitelistRegex)}
+              ${this.renderChoiceItem("启用字幕忽略参考词", 'data-field="ai.subtitleBlacklistEnabled"', formConfig.ai.subtitleBlacklistEnabled)}
+              ${this.renderChoiceItem("字幕忽略参考词使用正则", 'data-field="ai.subtitleBlacklistRegex"', formConfig.ai.subtitleBlacklistRegex)}
+            </div>
+            <div class="guardian-grid-2">
+              <label class="guardian-label">弹幕优先参考词
                 <textarea class="guardian-textarea" data-field="ai.whitelist" placeholder="每行填写一个词">${escapeHtml(listToLines(formConfig.ai.whitelist))}</textarea>
               </label>
-              <label class="guardian-label">忽略参考词
+              <label class="guardian-label">弹幕忽略参考词
                 <textarea class="guardian-textarea" data-field="ai.blacklist" placeholder="每行填写一个词">${escapeHtml(listToLines(formConfig.ai.blacklist))}</textarea>
               </label>
             </div>
             <div class="guardian-choice-grid">
-              ${this.renderChoiceItem("启用优先参考词", 'data-field="ai.whitelistEnabled"', formConfig.ai.whitelistEnabled)}
-              ${this.renderChoiceItem("优先参考词使用正则", 'data-field="ai.whitelistRegex"', formConfig.ai.whitelistRegex)}
-              ${this.renderChoiceItem("启用忽略参考词", 'data-field="ai.blacklistEnabled"', formConfig.ai.blacklistEnabled)}
-              ${this.renderChoiceItem("忽略参考词使用正则", 'data-field="ai.blacklistRegex"', formConfig.ai.blacklistRegex)}
+              ${this.renderChoiceItem("启用弹幕优先参考词", 'data-field="ai.whitelistEnabled"', formConfig.ai.whitelistEnabled)}
+              ${this.renderChoiceItem("弹幕优先参考词使用正则", 'data-field="ai.whitelistRegex"', formConfig.ai.whitelistRegex)}
+              ${this.renderChoiceItem("启用弹幕忽略参考词", 'data-field="ai.blacklistEnabled"', formConfig.ai.blacklistEnabled)}
+              ${this.renderChoiceItem("弹幕忽略参考词使用正则", 'data-field="ai.blacklistRegex"', formConfig.ai.blacklistRegex)}
             </div>
             <div class="guardian-grid-2">
               <label class="guardian-label">最少参考弹幕数
                 <input class="guardian-field" data-field="video.minDanmakuForAnalysis" type="number" min="1" value="${formConfig.video.minDanmakuForAnalysis}">
+              </label>
+              <label class="guardian-label">字幕筛选上下文（秒）
+                <input class="guardian-field" data-field="video.subtitleFilterContextSeconds" type="number" min="0" value="${formConfig.video.subtitleFilterContextSeconds}">
               </label>
               <label class="guardian-label">最多参考字幕条数
                 <input class="guardian-field" data-field="video.maxSubtitleCueCount" type="number" min="1" value="${formConfig.video.maxSubtitleCueCount}">
@@ -1684,6 +1704,12 @@ export class ControlCenter {
           prompt: formConfig.ai.danmakuPrompt,
           danmakuPrompt: formConfig.ai.danmakuPrompt,
           subtitlePrompt: formConfig.ai.subtitlePrompt,
+          subtitleWhitelist: formConfig.ai.subtitleWhitelist,
+          subtitleBlacklist: formConfig.ai.subtitleBlacklist,
+          subtitleWhitelistEnabled: formConfig.ai.subtitleWhitelistEnabled,
+          subtitleWhitelistRegex: formConfig.ai.subtitleWhitelistRegex,
+          subtitleBlacklistEnabled: formConfig.ai.subtitleBlacklistEnabled,
+          subtitleBlacklistRegex: formConfig.ai.subtitleBlacklistRegex,
           whitelist: formConfig.ai.whitelist,
           blacklist: formConfig.ai.blacklist,
           whitelistEnabled: formConfig.ai.whitelistEnabled,
@@ -1693,6 +1719,8 @@ export class ControlCenter {
         },
         video: {
           ...this.config.video,
+          subtitleFilterEnabled: formConfig.video.subtitleFilterEnabled,
+          subtitleFilterContextSeconds: formConfig.video.subtitleFilterContextSeconds,
           minDanmakuForAnalysis: formConfig.video.minDanmakuForAnalysis,
           maxSubtitleCueCount: formConfig.video.maxSubtitleCueCount,
           introGuardSeconds: formConfig.video.introGuardSeconds,
@@ -1881,6 +1909,9 @@ export class ControlCenter {
       case "video.subtitleAnalysisEnabled":
         formConfig.video.subtitleAnalysisEnabled = target instanceof HTMLInputElement ? target.checked : formConfig.video.subtitleAnalysisEnabled;
         return;
+      case "video.subtitleFilterEnabled":
+        formConfig.video.subtitleFilterEnabled = target instanceof HTMLInputElement ? target.checked : formConfig.video.subtitleFilterEnabled;
+        return;
       case "video.danmakuAnalysisEnabled":
         formConfig.video.danmakuAnalysisEnabled = target instanceof HTMLInputElement ? target.checked : formConfig.video.danmakuAnalysisEnabled;
         return;
@@ -1892,6 +1923,9 @@ export class ControlCenter {
         return;
       case "video.minDanmakuForAnalysis":
         formConfig.video.minDanmakuForAnalysis = this.readNumericValue(target.value, formConfig.video.minDanmakuForAnalysis);
+        return;
+      case "video.subtitleFilterContextSeconds":
+        formConfig.video.subtitleFilterContextSeconds = this.readNumericValue(target.value, formConfig.video.subtitleFilterContextSeconds);
         return;
       case "video.maxSubtitleCueCount":
         formConfig.video.maxSubtitleCueCount = this.readNumericValue(target.value, formConfig.video.maxSubtitleCueCount);
@@ -1932,6 +1966,24 @@ export class ControlCenter {
         return;
       case "ai.subtitlePrompt":
         formConfig.ai.subtitlePrompt = target.value;
+        return;
+      case "ai.subtitleWhitelist":
+        formConfig.ai.subtitleWhitelist = linesToList(target.value);
+        return;
+      case "ai.subtitleBlacklist":
+        formConfig.ai.subtitleBlacklist = linesToList(target.value);
+        return;
+      case "ai.subtitleWhitelistEnabled":
+        formConfig.ai.subtitleWhitelistEnabled = target instanceof HTMLInputElement ? target.checked : formConfig.ai.subtitleWhitelistEnabled;
+        return;
+      case "ai.subtitleWhitelistRegex":
+        formConfig.ai.subtitleWhitelistRegex = target instanceof HTMLInputElement ? target.checked : formConfig.ai.subtitleWhitelistRegex;
+        return;
+      case "ai.subtitleBlacklistEnabled":
+        formConfig.ai.subtitleBlacklistEnabled = target instanceof HTMLInputElement ? target.checked : formConfig.ai.subtitleBlacklistEnabled;
+        return;
+      case "ai.subtitleBlacklistRegex":
+        formConfig.ai.subtitleBlacklistRegex = target instanceof HTMLInputElement ? target.checked : formConfig.ai.subtitleBlacklistRegex;
         return;
       case "ai.whitelist":
         formConfig.ai.whitelist = linesToList(target.value);
