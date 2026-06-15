@@ -1,5 +1,31 @@
 # Bilibili Guardian
 
+<!-- starswhere-docs-overview -->
+
+## 项目概览
+
+**定位**：面向 Bilibili 浏览体验治理的浏览器扩展与用户脚本项目，支持内容分析、规则过滤和控制中心能力。
+
+**核心功能**：
+- 视频守护、动态反馈和规则过滤
+- 支持 content/background/userscript 多构建目标
+- 封装平台存储、HTTP、错误处理和分析服务
+- 包含较完整的单元测试与发布说明
+
+**技术栈**：TypeScript、Vite、浏览器扩展 API、Userscript、Vitest。
+
+**目录与模块**：`src/core` 是分析、存储和平台逻辑；`public/manifest.json` 是扩展清单；多个 `vite.*.config.ts` 对应不同构建目标；`tests/` 覆盖核心规则。
+
+**使用方式**：按 `package.json` 中脚本构建扩展或用户脚本；发布流程参考 `RELEASING.md`。
+
+**配置说明**：`.env.example` 和扩展 manifest 控制构建与运行参数。
+
+**适用场景**：适合 Bilibili 内容过滤、观看体验优化和浏览器扩展开发参考。
+
+**注意事项**：扩展逻辑依赖站点 DOM 与接口形态，Bilibili 页面改版时需要同步验证规则。
+
+<!-- /starswhere-docs-overview -->
+
 一个给 Bilibili 用户使用的清理工具，把“推荐流过滤”和“视频广告识别/自动跳过”整合进同一套页面内控制中心。
 
 - 当前版本：`0.1.18`
